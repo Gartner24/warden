@@ -32,6 +32,46 @@ Returns the current firmware state. Used by the Attacker Panel to verify connect
 
 ---
 
+## GET /attack/status
+
+Returns the live execution state of the offensive chain. Designed for high-frequency polling by the Attacker Panel during an active attack (typical interval: 1 second, per UC-17). Use `GET /status` for general firmware state instead.
+
+**Response 200 OK** (attack in progress):
+```json
+{
+  "ataque_activo": true,
+  "fase_actual": "FASE_2",
+  "tiempo_transcurrido_seg": 47.3,
+  "tiempo_restante_fase_seg": 12.7,
+  "contadores": {
+    "beacons_emitidos": 1500,
+    "deauths_emitidos": 234,
+    "clientes_evil_twin": 0,
+    "credenciales_capturadas": 0
+  }
+}
+```
+
+`fase_actual` values: `IDLE | FASE_1 | FASE_2 | FASE_3 | FINALIZADO`
+
+**Response 200 OK** (no attack running):
+```json
+{
+  "ataque_activo": false,
+  "fase_actual": "IDLE",
+  "tiempo_transcurrido_seg": 0,
+  "tiempo_restante_fase_seg": 0,
+  "contadores": {
+    "beacons_emitidos": 0,
+    "deauths_emitidos": 0,
+    "clientes_evil_twin": 0,
+    "credenciales_capturadas": 0
+  }
+}
+```
+
+---
+
 ## GET /scan
 
 Runs an active 2.4 GHz WiFi scan. Blocking for approximately 10 seconds.
@@ -306,8 +346,3 @@ event: phase_change
 data: {"fase": "FINALIZADO", "timestamp_ms": 223456}
 ```
 
----
-
-## Unlisted inconsistency
-
-`deliverables/warden-design.tex:891` also lists `GET /attack/status` (returns `ataque_activo`, `fase_actual`, `tiempo_transcurrido_seg`, `tiempo_restante_fase_seg`, `contadores`). It was absent from the original draft and is not part of the current fix batch — confirm before adding.

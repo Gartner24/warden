@@ -24,6 +24,7 @@ src/attacker-panel/
 - `GET /clients` -> display associated clients with OUI-resolved manufacturer
 - `POST /config` -> set target BSSID, SSID, channel, phase durations
 - `POST /attack/start` -> trigger full chain (requires `confirm` from Validador Etico)
+- `GET /attack/status` -> poll live phase, timers, and counters during an active attack (~1s interval, UC-17)
 - `POST /attack/stop` -> abort current phase
 - `GET /credentials` -> show captured credentials from captive portal
 - `GET /events` (SSE or polling) -> live status updates
