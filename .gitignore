@@ -1,11 +1,11 @@
 # ---------------------------------------------------------------
-# docs/ - keep ONLY LaTeX source (.tex / .sty), drop everything else
+# deliverables/ - keep ONLY LaTeX source (.tex / .sty), drop everything else
+# (academic submission lives here; markdown dev docs live under docs/)
 # ---------------------------------------------------------------
-docs/**
-!docs/
-!docs/latex/
-!docs/latex/*.tex
-!docs/latex/*.sty
+deliverables/**
+!deliverables/
+!deliverables/*.tex
+!deliverables/*.sty
 
 # ---------------------------------------------------------------
 # LaTeX build artifacts (anywhere in the tree)
