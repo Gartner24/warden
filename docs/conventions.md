@@ -46,6 +46,8 @@ Source: `deliverables/warden-design.tex` lines 111-195, `deliverables/warden-arc
 | Gateway | `192.168.4.1` |
 | DHCP range | `192.168.4.10 - 192.168.4.50` |
 
+The `WARDEN_CONTROL` AP runs on channel 1 while the lab router runs on channel 6 to keep the management/control radio path on a different non-overlapping channel from the attack radio path. This avoids contention when the ESP32 transmits attack frames on the lab channel and reduces the chance that the operator's panel session interferes with the attack itself.
+
 ## Naming rules
 
 - Source files: `snake_case` for Python; `camelCase` for Arduino/C++.

@@ -13,6 +13,8 @@ Base URL: `http://127.0.0.1:8000` (local only by default)
 | POST | `/api/session/reset` | Clear all analyzer state and counters; restart the session |
 | GET | `/api/config` | Read current detection thresholds |
 | POST | `/api/config` | Update detection thresholds at runtime |
+| POST | `/api/detector/start` | Start the detector; body: `{ iface, channel, bssid_protegido, ssid_protegido, umbrales }` |
+| POST | `/api/detector/stop` | Stop the running detector |
 
 ## WebSocket
 
@@ -20,24 +22,59 @@ Base URL: `http://127.0.0.1:8000` (local only by default)
 
 The server pushes JSON events to all connected clients. The browser does not send messages over this socket.
 
-### Event schema (TBD - to be finalized during implementation)
+### Backend → Frontend messages
 
+**On connect (`init`):**
 ```json
 {
-  "type": "alert",
-  "phase": "beacon_flood | deauth | evil_twin | chain",
-  "detection_id": "D-01 | D-02 | D-03 | D-07",
-  "timestamp": "<ISO-8601>",
-  "details": {}
+  "tipo": "init",
+  "alertas_recientes": [],
+  "estado": "conectado"
 }
 ```
 
+**New alert:**
 ```json
 {
-  "type": "status",
-  "state": "running | stopped",
-  "timestamp": "<ISO-8601>"
+  "tipo": "alerta",
+  "datos": {
+    "timestamp": "2026-04-25T14:23:01",
+    "severidad": "ALERT",
+    "tipo": "BEACON_FLOOD",
+    "mensaje": "Tasa anomala de beacons: 87.4 BSSIDs unicos/s",
+    "detalles": { "bssids_unicos": 437, "ventana_seg": 5 }
+  }
 }
+```
+
+`severidad` values: `INFO | WARNING | ALERT | CRITICAL`
+
+`tipo` values: `BEACON_FLOOD | DEAUTH | EVIL_TWIN | CADENA_OFENSIVA`
+
+**Session reset** (broadcast after `POST /session/reset`):
+```json
+{
+  "tipo": "session_reset"
+}
+```
+
+**Detector status change:**
+```json
+{
+  "tipo": "detector_status",
+  "estado": "corriendo | detenido | error",
+  "mensaje": "..."
+}
+```
+
+### Frontend → Backend messages
+
+```json
+{ "comando": "status" }
+```
+
+```json
+{ "comando": "ping" }
 ```
 
 ## Start the server

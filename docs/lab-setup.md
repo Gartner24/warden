@@ -43,6 +43,34 @@ Replace `<PANDA_MAC>` with the MAC address of the Panda PAU0B. Reload udev and r
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
+### Disable MAC randomization for the Panda adapter
+
+NetworkManager randomizes MACs by default on many distros. Because the udev rule above matches by MAC address, randomization causes the rule to fail (the adapter boots with a random MAC and never matches `<PANDA_MAC>`).
+
+First, get the permanent MAC:
+```bash
+ethtool -P <iface>   # use the current name before the udev rule renames it
+```
+
+Create `/etc/NetworkManager/conf.d/99-panda-no-randomize.conf`:
+```ini
+[device-mac-randomization]
+match-device=mac:<PANDA_PERMANENT_MAC>
+wifi.scan-rand-mac-address=no
+
+[connection-mac-randomization]
+match-device=mac:<PANDA_PERMANENT_MAC>
+wifi.cloned-mac-address=permanent
+ethernet.cloned-mac-address=permanent
+```
+
+Replace `<PANDA_PERMANENT_MAC>` with the value from `ethtool -P`. Then:
+```bash
+sudo systemctl restart NetworkManager
+# unplug and replug the Panda adapter
+iw dev panda0 info   # verify addr matches the permanent MAC
+```
+
 ### Monitor mode
 
 ```bash
@@ -57,7 +85,37 @@ sudo iw dev panda0 set channel 6
 1. Install Arduino IDE 2.x.
 2. Add the ESP32 board package: `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`.
 3. Select board: **ESP32 Dev Module**.
-4. Flash `src/attacker/` via USB at 115200 baud.
+4. Install required libraries from the Arduino Library Manager: `ESPAsyncWebServer` (latest), `AsyncTCP` (dependency of ESPAsyncWebServer), `ArduinoJson` 7.0+. These are required by the `Servidor API REST` and `Portal Cautivo` firmware modules.
+5. Flash `src/attacker/` via USB at 115200 baud.
+
+### Verify ESP32 detection and grant serial port access
+
+Install `esptool`:
+- Arch: `sudo pacman -S esptool`
+- Ubuntu: `pip install esptool`
+
+With the ESP32 connected via USB, verify the Silicon Labs USB-Serial bridge appears:
+```bash
+lsusb | grep -i 'CP210\|CH340\|FT232'
+```
+
+Confirm the kernel created the serial device:
+```bash
+ls /dev/ttyUSB*   # expected: /dev/ttyUSB0
+```
+
+Check chip details (expected: `ESP32-D0WD-V3`, revision v3.1, 4 MB flash):
+```bash
+esptool --port /dev/ttyUSB0 flash-id
+```
+
+Add your user to the serial port group so `esptool` and Arduino IDE work without `sudo`:
+- Arch: `sudo usermod -aG uucp $USER`
+- Ubuntu: `sudo usermod -aG dialout $USER`
+
+Log out and back in (or reboot) for the group change to take effect.
+
+If `/dev/ttyUSB0` does not appear, the most common causes are a charge-only USB cable (replace with a data cable) or the user not yet in the correct group.
 
 ## Lab network
 

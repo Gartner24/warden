@@ -51,8 +51,9 @@ warden/
 ### Attacker firmware (ESP32)
 
 1. Open `src/attacker/` in Arduino IDE 2.x with the Arduino-ESP32 2.0+ board package installed.
-2. Flash via USB (115200 baud).
-3. After boot the ESP32 exposes `WARDEN_CONTROL` AP (WPA2-PSK `warden-control-pwd`, `192.168.4.1`).
+2. Install required libraries from the Arduino Library Manager: `ESPAsyncWebServer`, `AsyncTCP`, `ArduinoJson` (see [`docs/lab-setup.md`](docs/lab-setup.md) for details).
+3. Flash via USB (115200 baud).
+4. After boot the ESP32 exposes `WARDEN_CONTROL` AP (WPA2-PSK `warden-control-pwd`, `192.168.4.1`).
 
 ### Attacker Panel
 
