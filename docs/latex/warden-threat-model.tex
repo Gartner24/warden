@@ -1,0 +1,350 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Threat Model y Cadena de Ataque}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento detalla el modelo de amenaza (threat model) del subsistema
+ofensivo de WARDEN, así como la narrativa, justificación técnica y reglas de
+ejecución de la cadena de ataque que se reproduce en el laboratorio. Sirve
+como complemento del Documento de Visión, especificando con rigor el lado
+ofensivo del proyecto.
+
+Un threat model es un artefacto estándar en proyectos de ciberseguridad que
+formaliza, antes de la ejecución de cualquier ataque, las preguntas
+fundamentales: \emph{quién} ataca, \emph{a quién} ataca, \emph{por qué} ataca,
+\emph{cómo} ataca, \emph{qué logra} si tiene éxito, y \emph{qué reglas}
+delimitan el ejercicio. La existencia de este documento garantiza que la
+ejecución del subsistema ofensivo es deliberada, contenida y trazable.
+
+\subsection{Audiencia}
+Este documento está dirigido a:
+
+\begin{itemize}
+  \item Los integrantes del equipo de desarrollo, como referencia
+    autoritativa de qué se permite ejecutar y qué no.
+  \item El profesor evaluador, como evidencia de que el ejercicio ofensivo
+    está formalmente planificado y delimitado.
+  \item Cualquier evaluador externo o futuro contribuidor que necesite
+    entender la lógica del lado ofensivo del proyecto.
+\end{itemize}
+
+\subsection{Naturaleza Académica}
+Toda actividad descrita en este documento se realiza con fines estrictamente
+educativos en el contexto de la asignatura Teoría de Sistemas de la
+Universidad Tecnológica de Pereira. Las pruebas se ejecutan exclusivamente
+contra equipos propiedad del equipo de desarrollo. Los datos manejados
+durante las demostraciones son ficticios. La cadena de ataque descrita aquí
+no se ejecuta, bajo ninguna circunstancia, contra redes, dispositivos o
+usuarios ajenos al equipo.
+
+% ==============================================================================
+\section{Marco Conceptual}
+% ==============================================================================
+
+\subsection{Threat Modeling}
+El modelado de amenazas (threat modeling) es la práctica de identificar,
+documentar y analizar las amenazas a un sistema antes de su ejecución. En el
+contexto de WARDEN, el sistema modelado no es un activo a defender, sino el
+ejercicio mismo de ataque controlado. El threat model responde:
+
+\begin{enumerate}
+  \item ¿Qué actor malicioso se está simulando?
+  \item ¿Cuáles son las capacidades, limitaciones y motivaciones de ese
+    actor?
+  \item ¿Qué activos son objetivo del ataque?
+  \item ¿Qué técnicas emplea el actor para alcanzar sus objetivos?
+  \item ¿Qué evidencias deja cada técnica?
+  \item ¿Qué resultado esperado se considera ``éxito'' del atacante?
+\end{enumerate}
+
+\subsection{Cyber Kill Chain}
+La cadena de ataque (kill chain) es un modelo conceptual desarrollado
+originalmente por Lockheed Martin que describe las fases secuenciales de
+una operación ofensiva. En WARDEN la cadena se compone de tres fases que se
+ejecutan en orden y en las que el éxito de cada fase habilita la siguiente:
+
+\begin{enumerate}
+  \item \textbf{Reconocimiento y Distracción.} El atacante prepara el
+    entorno y reduce la capacidad de la víctima de discernir señales
+    legítimas de señales maliciosas.
+  \item \textbf{Aislamiento.} El atacante desconecta a la víctima de su
+    canal legítimo de comunicación.
+  \item \textbf{Explotación.} El atacante captura las credenciales o el
+    objetivo final, aprovechando el estado vulnerable de la víctima.
+\end{enumerate}
+
+\subsection{MITRE ATT\&CK}
+MITRE ATT\&CK es una matriz pública mantenida por MITRE Corporation que
+documenta tácticas y técnicas adversarias observadas en operaciones reales.
+Cada fase de la cadena de WARDEN se mapea a técnicas específicas de esta
+matriz. Este mapeo no es decorativo: ancla el ejercicio académico a un marco
+profesional reconocido y permite que cualquier evaluador familiarizado con
+la matriz identifique inmediatamente lo que el ejercicio reproduce.
+
+% ==============================================================================
+\section{Modelo de Atacante}
+% ==============================================================================
+
+\subsection{Perfil del Actor}
+El atacante simulado por WARDEN corresponde al arquetipo del
+\textbf{actor oportunista cercano} (proximity-based opportunistic attacker),
+ampliamente documentado en la literatura de seguridad inalámbrica.
+
+\begin{datatable}{L{3.5cm} L{12.3cm}}{Atributo & Caracterización}
+\drow{Tipo de actor    & Atacante oportunista cercano. No tiene un objetivo individual específico predefinido; ataca a quien se encuentre conectado a la red que decide suplantar.}
+\drow{Ubicación        & Físicamente cercano al objetivo, dentro del rango de cobertura WiFi. Típicamente opera desde espacios públicos con alta densidad de usuarios: cafeterías, salas de espera de aeropuerto, bibliotecas, campus universitarios.}
+\drow{Capacidades      & Bajas a moderadas. Hardware accesible (microcontrolador económico). Conocimiento técnico de nivel intermedio sobre el protocolo 802.11. No requiere acceso previo a la infraestructura objetivo.}
+\drow{Recursos         & Bajos. El equipamiento completo cuesta menos de 30 USD. No requiere infraestructura de comando y control.}
+\drow{Persistencia     & Baja. Operación oportunista de corta duración (minutos a horas). No busca mantener acceso prolongado.}
+\drow{Detectabilidad   & Moderada. La ejecución produce evidencias claras observables por sensores pasivos, pero típicamente no son monitoreados en redes domésticas o empresariales sin WIDS especializado.}
+\drow{Motivación       & Robo de credenciales para reutilización en otros sistemas (correo institucional, redes sociales, banca, etc.).}
+\end{datatable}
+
+\subsection{Casos Reales de Referencia}
+Este perfil de atacante y la cadena de técnicas descritas en este documento
+no son una construcción teórica del equipo. Corresponden a operaciones
+reales documentadas por la industria de seguridad:
+
+\begin{itemize}
+  \item \textbf{Campañas DarkHotel} (Kaspersky Lab, documentadas desde 2007).
+    Operaciones contra ejecutivos hospedados en hoteles, donde los atacantes
+    desplegaban Evil Twins sobre redes WiFi de hoteles para robar
+    credenciales corporativas.
+  \item \textbf{APT28 / Fancy Bear contra hoteles europeos} (FireEye, 2017).
+    Uso documentado de deauthentication seguido de Evil Twin contra
+    huéspedes específicos.
+  \item \textbf{Demostraciones en DEF CON Wall of Sheep} (anuales). Pruebas
+    de concepto que muestran ataques de Evil Twin contra asistentes a la
+    conferencia.
+  \item \textbf{Herramientas públicas como Wifiphisher} que automatizan
+    exactamente la cadena de tres fases que reproduce WARDEN, evidencia de
+    que esta combinación es el patrón de ataque establecido.
+\end{itemize}
+
+% ==============================================================================
+\section{Activos Objetivo}
+% ==============================================================================
+
+\subsection{Inventario de Activos}
+La cadena de ataque de WARDEN tiene los siguientes activos como objetivo,
+todos propiedad del equipo de desarrollo:
+
+\begin{datatable}{L{3.5cm} L{4.5cm} L{7.8cm}}{Activo & Identificador & Rol en el ataque}
+\drow{Router de laboratorio & SSID: \texttt{LAB\_WARDEN\_UTP} \newline BSSID: por configurar & Red legítima a suplantar. Objeto del Evil Twin.}
+\drow{Redmi Note 7 & MIUI 12.5 \newline MAC: por documentar & Víctima primaria. Objetivo del robo de credenciales.}
+\drow{Dell Latitude E6220 & Ubuntu Server 22.04.5 LTS \newline MAC: por documentar & Víctima secundaria. Recibe Beacon Flood y Deauth.}
+\end{datatable}
+
+\subsection{Activos Ficticios para Demostración}
+Durante la ejecución del ataque, el portal cautivo solicita ``credenciales''
+que son ficticias y solo existen para fines demostrativos. Bajo ninguna
+circunstancia se introducen credenciales reales en el portal cautivo de
+WARDEN.
+
+\textbf{Credenciales ficticias estándar para demostración:}
+
+\begin{datatable}{L{3.5cm} L{5cm} L{7.3cm}}{Campo & Valor de demostración & Justificación}
+\drow{Usuario  & \texttt{demo.user@warden.test} & Dominio inexistente, sufijo \texttt{.test} reservado por RFC 2606}
+\drow{Contraseña & \texttt{demo-password-12345} & Cadena obviamente sintética, sin correspondencia con cuenta real}
+\end{datatable}
+
+% ==============================================================================
+\section{Reglas de Ejecución (Rules of Engagement)}
+% ==============================================================================
+
+Las siguientes reglas son inviolables y delimitan el alcance permitido del
+subsistema ofensivo:
+
+\begin{enumerate}
+  \item \textbf{Aislamiento de objetivos.} Los ataques se dirigen
+    exclusivamente al BSSID del router de laboratorio y a las direcciones
+    MAC de los dispositivos víctima del equipo. La ESP32 nunca opera con
+    objetivos genéricos ni con direcciones broadcast a redes ajenas.
+  \item \textbf{Solo datos ficticios.} El portal cautivo solo acepta y
+    registra credenciales ficticias. Si por error un miembro del equipo
+    ingresa una credencial real, se elimina inmediatamente del log.
+  \item \textbf{Sin internet.} La infraestructura de laboratorio nunca está
+    conectada a internet durante las pruebas. Esto previene cualquier
+    fuga accidental de tráfico capturado.
+  \item \textbf{Ubicación controlada.} Las pruebas se realizan en espacios
+    con baja densidad de redes WiFi vecinas. Antes de cada sesión, se
+    verifica el espectro inalámbrico circundante.
+  \item \textbf{Duración limitada.} Cada sesión de prueba tiene una duración
+    máxima planificada. La cadena de ataque no se ejecuta de forma continua
+    o desatendida.
+  \item \textbf{Registro obligatorio.} Cada ejecución se documenta en una
+    bitácora de sesión con: fecha, hora de inicio y fin, participantes
+    presentes, fases ejecutadas, resultados observados.
+  \item \textbf{Detención inmediata.} Cualquier evidencia de que un
+    dispositivo o red ajena está siendo afectada por la ejecución implica
+    la detención inmediata del subsistema ofensivo.
+  \item \textbf{No despliegue fuera del laboratorio.} El firmware del
+    atacante nunca se ejecuta fuera de las sesiones de laboratorio
+    autorizadas. La ESP32 con el firmware ofensivo se mantiene desconectada
+    cuando no está en uso.
+  \item \textbf{Distribución del firmware.} El firmware del subsistema
+    ofensivo se publica únicamente con propósitos académicos y se
+    acompaña siempre de su documentación, incluyendo este threat model.
+  \item \textbf{Confirmación ética obligatoria en el Panel del Atacante.}
+    El Panel del Atacante exige al Operador marcar explícitamente una
+    casilla de confirmación ética antes de habilitar el botón de
+    lanzamiento del ataque. Esta confirmación humana se complementa con
+    la validación automática del Validador Ético en el firmware, que
+    se ejecuta tanto al cambiar la configuración como al recibir la
+    petición \texttt{POST /attack/start}. Una configuración rechazada
+    retorna HTTP 403 sin iniciar ningún ataque.
+  \item \textbf{Aislamiento de la red de control.} La red WiFi
+    \texttt{WARDEN\_CONTROL} servida por la ESP32 para que la laptop
+    del Operador acceda a la API REST está protegida con WPA2 y
+    credenciales conocidas únicamente por el equipo. La red de control
+    no tiene salida a internet y opera exclusivamente como canal
+    administrativo entre el Operador y la ESP32.
+\end{enumerate}
+
+% ==============================================================================
+\section{Cadena de Ataque}
+% ==============================================================================
+
+La cadena WARDEN se compone de tres fases secuenciales que reproducen el
+patrón \emph{Reconocimiento → Aislamiento → Explotación}.
+
+\subsection{Diagrama de la Cadena}
+
+\vspace{0.3cm}
+\begin{verbatim}
++----------------------------------------------------------+
+|  FASE 1: BEACON FLOODING                                 |
+|  Objetivo: saturar el espectro y reducir confianza       |
+|  MITRE ATT&CK: T1498 - Network Denial of Service         |
+|  Duracion tipica: 30-60 segundos                         |
++----------------------------------------------------------+
+                          |
+                          v
++----------------------------------------------------------+
+|  FASE 2: DEAUTHENTICATION                                |
+|  Objetivo: desconectar a la victima del AP legitimo      |
+|  MITRE ATT&CK: T1499 - Endpoint Denial of Service        |
+|  Duracion tipica: 5-15 segundos                          |
++----------------------------------------------------------+
+                          |
+                          v
++----------------------------------------------------------+
+|  FASE 3: EVIL TWIN + PORTAL CAUTIVO                      |
+|  Objetivo: capturar credenciales por suplantacion        |
+|  MITRE ATT&CK: T1557 - Adversary-in-the-Middle           |
+|                T1056.003 - Web Portal Capture            |
+|  Duracion tipica: hasta que la victima ingresa datos     |
++----------------------------------------------------------+
+                          |
+                          v
+                  CADENA COMPLETADA
+\end{verbatim}
+
+\subsection{Fase 1: Beacon Flooding}
+
+\begin{atktable}
+\atkrow{Fase}{1 - Reconocimiento y Distracción}
+\atkrow{Nombre del ataque}{Beacon Flooding}
+\atkrow{Técnica MITRE}{T1498 - Network Denial of Service}
+\atkrow{Objetivo táctico}{Saturar el entorno inalámbrico de la víctima con redes falsas, reduciendo la capacidad del usuario y de las herramientas automatizadas para discernir entre redes legítimas y maliciosas.}
+\atkrow{Mecanismo}{La ESP32 emite continuamente beacons 802.11 con SSIDs aleatorios y BSSIDs falsificados. Cada beacon anuncia una ``red disponible'' inexistente.}
+\atkrow{Volumen}{Al menos 50 beacons únicos por segundo durante la duración de la fase.}
+\atkrow{Direccionalidad}{Broadcast en el canal del laboratorio. No se dirige a un cliente específico.}
+\atkrow{Efecto sobre la víctima}{La lista de redes WiFi disponibles del dispositivo se llena de SSIDs sospechosos, dificultando identificar la red real entre el ruido.}
+\atkrow{Evidencia generada}{Múltiples beacons con BSSIDs no vistos previamente, generados a tasa anómala desde un solo emisor físico (la ESP32).}
+\atkrow{Detección esperada}{El subsistema defensivo detecta una tasa anómala de beacons únicos por segundo (D-01).}
+\atkrow{Caso real referenciado}{Demostraciones en DEF CON con \texttt{mdk3} / \texttt{mdk4} y herramientas equivalentes.}
+\end{atktable}
+
+\subsection{Fase 2: Deauthentication}
+
+\begin{atktable}
+\atkrow{Fase}{2 - Aislamiento}
+\atkrow{Nombre del ataque}{Deauthentication}
+\atkrow{Técnica MITRE}{T1499 - Endpoint Denial of Service}
+\atkrow{Objetivo táctico}{Desconectar a la víctima de la red legítima para forzarla a reconectarse, momento en el que su dispositivo es vulnerable a conectarse al Evil Twin que se desplegará en la fase 3.}
+\atkrow{Mecanismo}{La ESP32 envía frames de deautenticación 802.11 con dirección de origen falsificada (impersonando al AP legítimo) dirigidos a la MAC del cliente víctima, o broadcast al BSSID legítimo.}
+\atkrow{Volumen}{Suficiente para mantener desconectada a la víctima durante el periodo en que el Evil Twin está activo.}
+\atkrow{Direccionalidad}{Dirigido al BSSID del router legítimo y a las MAC de los dispositivos víctima del equipo. Nunca a otros BSSIDs.}
+\atkrow{Efecto sobre la víctima}{El cliente recibe el deauth, asume que el AP lo está desconectando, y procede a buscar redes para reconectarse. En Android (Redmi Note 7), esto sucede en menos de 5 segundos. En Linux (Dell), el evento queda registrado en \texttt{dmesg} y \texttt{journalctl}.}
+\atkrow{Evidencia generada}{Frames de deauth con código de razón típico (1, 4, 7 según el caso), originados desde una MAC que suplanta al AP legítimo.}
+\atkrow{Detección esperada}{El subsistema defensivo detecta deauths dirigidos al BSSID protegido (D-02).}
+\atkrow{Caso real referenciado}{APT28 contra hoteles europeos (FireEye, 2017). Herramienta \texttt{aireplay-ng} en pentests.}
+\end{atktable}
+
+\subsection{Fase 3: Evil Twin con Portal Cautivo Falso}
+
+\begin{atktable}
+\atkrow{Fase}{3 - Explotación}
+\atkrow{Nombre del ataque}{Evil Twin con Portal Cautivo Falso}
+\atkrow{Técnica MITRE}{T1557 - Adversary-in-the-Middle \newline T1056.003 - Web Portal Capture}
+\atkrow{Objetivo táctico}{Hacer que la víctima se conecte a un AP controlado por el atacante (Evil Twin) y capturar credenciales mediante una página web falsa servida como portal cautivo.}
+\atkrow{Mecanismo}{La ESP32 cambia de modo emisor de beacons falsos a modo Access Point completo. Anuncia un SSID idéntico al de la red legítima (\texttt{LAB\_WARDEN\_UTP}) pero como red abierta (sin contraseña). Sirve un servidor DHCP, un servidor DNS que redirige todas las consultas a la propia ESP32, y un servidor web que presenta el portal cautivo falso.}
+\atkrow{Reconexión de la víctima}{El Redmi Note 7, recién desconectado por la Fase 2, busca el SSID conocido. Al encontrarlo abierto, intenta conectarse. Android detecta automáticamente que es una red con portal cautivo y lo presenta al usuario.}
+\atkrow{Portal cautivo}{Página web mínima diseñada por el equipo. Solicita ``re-autenticación'' con campos de usuario y contraseña. Identificada visiblemente como componente de demostración educativa de WARDEN.}
+\atkrow{Direccionalidad}{El AP solo es alcanzable físicamente por dispositivos en el rango de la ESP32. Los servicios sirven exclusivamente a clientes que se conectan voluntariamente.}
+\atkrow{Efecto sobre la víctima}{La víctima ve el portal cautivo. En el laboratorio, el operador de la víctima ingresa credenciales ficticias estándar (\texttt{demo.user@warden.test} / \texttt{demo-password-12345}).}
+\atkrow{Captura}{Las credenciales ficticias se registran por consola serial de la ESP32 y, simultáneamente, se publican en el endpoint \texttt{GET /credentials} de la API REST para que el Operador del Atacante las visualice en el Panel del Atacante. El almacenamiento es exclusivamente en memoria volátil.}
+\atkrow{Evidencia generada}{Aparición de un nuevo BSSID anunciando un SSID idéntico a uno conocido, pero con configuración de seguridad distinta (abierto vs. WPA2).}
+\atkrow{Detección esperada}{El subsistema defensivo detecta el SSID duplicado con BSSID distinto al protegido (D-03).}
+\atkrow{Caso real referenciado}{Campañas DarkHotel (Kaspersky). Herramienta \texttt{wifiphisher}.}
+\end{atktable}
+
+% ==============================================================================
+\section{Resumen de Detección Esperada}
+% ==============================================================================
+
+Para cada fase de la cadena ofensiva, el subsistema defensivo de WARDEN
+debe identificar evidencias específicas. La siguiente tabla resume la
+correspondencia entre el lado ofensivo y el defensivo:
+
+\begin{datatable}{L{2cm} L{4.5cm} L{4.5cm} L{4.3cm}}{Fase & Ataque & Firma de Detección & Objetivo de Detector}
+\drow{1 & Beacon Flooding & Tasa anómala de beacons únicos por segundo & D-01}
+\drow{2 & Deauthentication & Frames de deauth dirigidos al BSSID protegido & D-02}
+\drow{3 & Evil Twin & SSID duplicado con BSSID distinto al BSSID protegido & D-03}
+\drow{Cadena & Las tres fases secuenciales & Correlación temporal de las tres firmas en intervalo corto & D-07}
+\end{datatable}
+
+% ==============================================================================
+\section{Variantes y Escenarios de Demostración}
+% ==============================================================================
+
+\subsection{Escenario A: Cadena Completa Automática}
+La ESP32 ejecuta las tres fases en secuencia automática al presionar un
+botón o recibir un comando por consola serial. Esta modalidad demuestra el
+ataque tal como ocurriría en el mundo real.
+
+\subsection{Escenario B: Ejecución Fase por Fase Manual}
+El operador del atacante selecciona qué fase ejecutar y cuándo. Permite
+estudiar cada fase en aislamiento y mostrar al detector señales más
+limpias, útil para presentaciones didácticas.
+
+\subsection{Escenario C: Solo Detección sobre PCAP de Referencia}
+El subsistema defensivo se ejecuta sobre archivos PCAP previamente
+capturados durante sesiones autorizadas. Útil cuando el subsistema ofensivo
+no está disponible en una demostración.
+
+\end{document}

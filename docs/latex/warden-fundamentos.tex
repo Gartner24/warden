@@ -1,0 +1,646 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Fundamentos Técnicos}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito de este documento}
+Este documento existe para que cualquier integrante del equipo WARDEN, sin
+importar su experiencia previa en redes o ciberseguridad, pueda entender los
+conceptos fundamentales que sustentan el proyecto. Está escrito de forma
+narrativa: no es un glosario rápido sino una explicación construida pieza
+por pieza, con analogías, para que al terminar de leerlo las palabras
+\emph{beacon}, \emph{deauth}, \emph{modo monitor}, \emph{2.4 GHz}, o
+\emph{handshake} dejen de ser jerga y pasen a ser ideas claras.
+
+\subsection{Cómo leer este documento}
+El documento está pensado para leerse \textbf{en orden}. Cada sección asume
+que se entendió la anterior. La primera mitad construye el modelo mental
+de cómo funciona WiFi en general, y la segunda mitad explica los ataques y
+las técnicas que el proyecto WARDEN reproduce y detecta.
+
+Si en algún momento aparece un término que no está claro, casi siempre es
+porque se explica en una sección anterior. Volver a leer no es debilidad,
+es la forma correcta de absorber este tipo de material.
+
+\subsection{Audiencia}
+Este documento está dirigido a los integrantes del equipo de desarrollo de
+WARDEN. También sirve como material de respaldo durante la presentación
+del proyecto: cualquier pregunta de fundamentos que el profesor evaluador
+pueda hacer debería poder responderse con la información contenida aquí.
+
+% ==============================================================================
+\section{¿Qué es WiFi?}
+% ==============================================================================
+
+\subsection{Una conversación por radio}
+Cuando una laptop, un celular o cualquier dispositivo ``se conecta a WiFi'',
+lo que está ocurriendo es una conversación por ondas de radio entre el
+dispositivo y un aparato llamado \textbf{punto de acceso} (en inglés
+\emph{Access Point}, abreviado \textbf{AP}). El AP es típicamente un router
+WiFi en una casa o empresa.
+
+La idea es la misma que con una radio AM/FM: hay un emisor, hay un receptor,
+hay ondas viajando por el aire. La diferencia clave es que en WiFi todos
+los dispositivos pueden ser \emph{a la vez} emisores y receptores, y los
+mensajes que se envían no son audio sino datos digitales: páginas web,
+mensajes de WhatsApp, video de YouTube, etc.
+
+\subsection{El nombre técnico: 802.11}
+La radio comercial sigue estándares definidos por organismos internacionales
+(qué frecuencias se usan, cómo se modula la señal). WiFi también. El estándar
+que define cómo funciona WiFi se llama \textbf{IEEE 802.11}. La sigla IEEE es
+del organismo que lo creó (Institute of Electrical and Electronics
+Engineers), y 802.11 es el número del estándar.
+
+Cuando alguien dice ``frame 802.11'' se refiere a un mensaje WiFi siguiendo
+este estándar. WARDEN trabaja exclusivamente con frames 802.11.
+
+\subsection{¿Por qué se llama WiFi entonces?}
+``WiFi'' es un nombre comercial que la industria adoptó por ser más fácil de
+recordar que ``IEEE 802.11''. Para fines del proyecto, ambos términos se
+usan de forma intercambiable.
+
+% ==============================================================================
+\section{Espectro electromagnético y radiofrecuencia}
+% ==============================================================================
+
+\subsection{El espectro: de qué está hecha la luz}
+La luz visible que perciben nuestros ojos, las microondas que calientan la
+comida, los rayos X de un hospital, las ondas de radio AM/FM, y las señales
+WiFi son todas el mismo fenómeno físico: \textbf{ondas electromagnéticas}.
+Lo único que cambia entre ellas es su \emph{frecuencia}, es decir, qué tan
+rápido oscilan.
+
+El conjunto de todas las frecuencias posibles se llama \textbf{espectro
+electromagnético}. Va desde frecuencias muy bajas (ondas de radio largas,
+miles de kilómetros) hasta frecuencias muy altas (rayos gamma).
+
+\subsection{Hertz, kilohertz, megahertz, gigahertz}
+La frecuencia se mide en \textbf{hertz} (Hz). Un hertz significa ``una
+oscilación por segundo''. Las cifras grandes se acortan con prefijos:
+
+\begin{datatable}{L{2.5cm} L{4cm} L{8.8cm}}{Unidad & Valor & Ejemplo}
+\drow{1 Hz   & 1 oscilación por segundo                & Latido del corazón en reposo (aprox.)}
+\drow{1 kHz  & 1\,000 oscilaciones por segundo         & Sonido agudo audible}
+\drow{1 MHz  & 1\,000\,000 oscilaciones por segundo    & Radio AM (alrededor de 1 MHz)}
+\drow{1 GHz  & 1\,000\,000\,000 oscilaciones por segundo & WiFi 2.4 GHz, microondas}
+\end{datatable}
+
+WiFi opera en la región de los \textbf{gigahertz}: miles de millones de
+oscilaciones por segundo. Específicamente, en dos bandas: alrededor de 2.4
+GHz y alrededor de 5 GHz. WARDEN trabaja exclusivamente en la banda de 2.4
+GHz.
+
+\subsection{¿Por qué WiFi vive en 2.4 GHz?}
+La elección no es arbitraria. La banda de 2.4 GHz tiene varias propiedades
+útiles:
+
+\begin{itemize}
+  \item \textbf{Es banda ISM (Industrial, Scientific and Medical).} Esto
+    significa que en la mayoría de países es de uso libre: cualquiera puede
+    transmitir en ella sin necesidad de licencia, siempre que respete
+    límites de potencia. Otras bandas (por ejemplo, las que usan operadoras
+    celulares) están reservadas y se subastan por miles de millones de
+    dólares.
+  \item \textbf{Penetración razonable de paredes.} Las ondas de 2.4 GHz
+    atraviesan paredes domésticas con pérdida moderada. Frecuencias mucho
+    más altas (5 GHz, 6 GHz) atraviesan peor; frecuencias mucho más bajas
+    requerirían antenas enormes.
+  \item \textbf{Antenas pequeñas.} La longitud física de una antena
+    eficiente es proporcional a la longitud de onda, que a su vez es
+    inversa a la frecuencia. A 2.4 GHz, una antena puede ser de pocos
+    centímetros, ideal para dispositivos portátiles.
+\end{itemize}
+
+\subsection{La banda de 2.4 GHz no es un solo punto}
+Cuando se dice ``WiFi en 2.4 GHz'' en realidad se refiere a una región del
+espectro: desde aproximadamente 2.400 GHz hasta 2.495 GHz. Esa región se
+divide en \textbf{canales}.
+
+% ==============================================================================
+\section{Canales: ¿por qué WiFi solo escucha uno a la vez?}
+% ==============================================================================
+
+\subsection{La metáfora de las habitaciones}
+Imagina un edificio enorme con muchas habitaciones. En cada habitación hay
+gente conversando. Si te paras en el pasillo, oyes un murmullo confuso de
+todas las habitaciones a la vez y no entiendes nada. Pero si entras a una
+habitación específica, oyes claramente la conversación de esa habitación
+y solo esa.
+
+La banda de 2.4 GHz funciona igual. Está dividida en \textbf{14 canales}
+numerados del 1 al 14, cada uno centrado en una frecuencia ligeramente
+distinta. Cada canal es como una habitación: las redes WiFi que operan en
+el canal 6 no interfieren mucho con las que operan en el canal 11, porque
+son frecuencias diferentes. Un dispositivo WiFi puede sintonizarse a un
+canal específico, y mientras está sintonizado ahí, solo escucha lo que
+ocurre en ese canal.
+
+\subsection{Tabla de canales en 2.4 GHz}
+
+\begin{datatable}{L{2cm} L{3cm} L{10.3cm}}{Canal & Frecuencia central & Notas}
+\drow{1   & 2412 MHz & Disponible en todo el mundo}
+\drow{2   & 2417 MHz & }
+\drow{3   & 2422 MHz & }
+\drow{4   & 2427 MHz & }
+\drow{5   & 2432 MHz & }
+\drow{6   & 2437 MHz & Uno de los canales ``no superpuestos'' más usados}
+\drow{7   & 2442 MHz & }
+\drow{8   & 2447 MHz & }
+\drow{9   & 2452 MHz & }
+\drow{10  & 2457 MHz & }
+\drow{11  & 2462 MHz & Uno de los canales ``no superpuestos'' más usados}
+\drow{12  & 2467 MHz & No disponible en Estados Unidos}
+\drow{13  & 2472 MHz & No disponible en Estados Unidos}
+\drow{14  & 2484 MHz & Solo Japón}
+\end{datatable}
+
+\subsection{¿Por qué se recomiendan los canales 1, 6 y 11?}
+Aunque los canales son 14, cada uno usa un ancho de banda de 20 MHz, mientras
+que la separación entre canales contiguos es solo de 5 MHz. Esto significa
+que los canales se \textbf{solapan} entre sí. Solo los canales 1, 6 y 11
+están suficientemente separados para no interferirse mutuamente. Por eso son
+los más utilizados.
+
+Para WARDEN se utilizará un canal único (a definir cuando se configure el
+router de laboratorio), preferentemente alguno con baja densidad de redes
+vecinas.
+
+\subsection{Implicación crítica para WARDEN}
+Como un dispositivo WiFi solo puede estar sintonizado en un canal a la vez,
+nuestro adaptador detector (el Panda) solo escucha lo que ocurre en el canal
+donde lo configuremos. Si un ataque sucede en el canal 6 pero el Panda está
+en el canal 11, no lo captura. Por eso, antes de cualquier sesión de
+laboratorio, el Panda se configura explícitamente en el mismo canal del
+router de laboratorio.
+
+% ==============================================================================
+\section{Direcciones MAC: la ``cédula'' de cada dispositivo}
+% ==============================================================================
+
+\subsection{Cada interfaz de red tiene una identidad}
+Toda interfaz de red, ya sea cableada o inalámbrica, tiene asignada una
+dirección única llamada \textbf{dirección MAC} (Media Access Control). Es
+una secuencia de 6 bytes representada como 6 grupos de dos dígitos
+hexadecimales:
+
+\begin{verbatim}
+4a:c9:7b:ce:34:46
+\end{verbatim}
+
+Esta dirección viene grabada de fábrica en cada chip de red. Es como la
+cédula de ciudadanía del dispositivo en la red local: ningún otro chip en
+el mundo debería tener exactamente esa misma MAC.
+
+\subsection{El fabricante está codificado en la MAC}
+Los primeros 3 bytes de la MAC se llaman \textbf{OUI} (Organizationally
+Unique Identifier) y identifican al fabricante del chip. Los últimos 3
+bytes son únicos por dispositivo dentro de ese fabricante. Por ejemplo:
+
+\begin{itemize}
+  \item Una MAC que comienza con \texttt{00:c0:ca:...} indica un chip
+    fabricado por una compañía registrada en IEEE bajo ese OUI.
+  \item Existen bases de datos públicas (mantenidas por IEEE) que permiten
+    consultar el fabricante a partir del OUI.
+\end{itemize}
+
+\subsection{BSSID: la MAC del Access Point}
+Cuando hablamos específicamente de la dirección MAC de un \emph{Access
+Point}, le damos un nombre más técnico: \textbf{BSSID} (Basic Service Set
+Identifier). El BSSID es simplemente la MAC del AP. Cuando un cliente se
+conecta a una red WiFi, internamente lo que hace es conectarse a un BSSID
+específico.
+
+\subsection{SSID vs BSSID: dos conceptos distintos}
+Esta es una distinción que confunde mucho al principio, pero es
+fundamental:
+
+\begin{datatable}{L{2cm} L{5cm} L{8.8cm}}{Término & Qué es & Ejemplo}
+\drow{SSID  & Nombre legible de la red WiFi (lo que el usuario ve y elige) & \texttt{LAB\_WARDEN\_UTP}}
+\drow{BSSID & Dirección MAC del AP (lo que internamente identifica al equipo) & \texttt{e4:ab:89:d6:9b:80}}
+\end{datatable}
+
+Una red puede tener \textbf{varios APs con el mismo SSID pero distinto
+BSSID} (por ejemplo, una empresa con múltiples routers que se anuncian con
+el mismo nombre para que los empleados no tengan que reconectarse al
+moverse). Lo contrario también puede pasar: un AP atacante puede crear una
+red con el mismo SSID que una legítima pero con BSSID distinto. Esto
+último es la base del ataque \textbf{Evil Twin}, que veremos más adelante.
+
+% ==============================================================================
+\section{Anatomía de un frame 802.11}
+% ==============================================================================
+
+\subsection{Un frame es un mensaje empaquetado}
+Cada vez que un dispositivo WiFi transmite algo por aire, lo hace en
+forma de un \textbf{frame}. Un frame es un mensaje empaquetado con una
+estructura precisa: tiene un encabezado con metadatos (origen, destino,
+tipo de mensaje, número de secuencia), un cuerpo con el contenido, y una
+verificación final para detectar errores.
+
+Es análogo a un sobre postal: el sobre tiene remitente, destinatario,
+estampilla, sello, y dentro va la carta. Si llega dañado, se nota.
+
+\subsection{Tres categorías de frames}
+El estándar 802.11 define tres categorías principales de frames, cada una
+con un propósito distinto:
+
+\begin{datatable}{L{3.5cm} L{12.3cm}}{Categoría & Propósito y ejemplos}
+\drow{Frames de gestión & Coordinan el uso de la red. No transportan datos del usuario, sino información sobre la red en sí: anuncios de APs, solicitudes de conexión, desconexiones, etc. \emph{Ejemplos: Beacon, Probe Request, Probe Response, Authentication, Association Request, Deauthentication.}}
+\drow{Frames de control & Sincronizan transmisiones y confirman recepciones. Son muy cortos y muy frecuentes. \emph{Ejemplos: ACK (acknowledgment), RTS (request to send), CTS (clear to send).}}
+\drow{Frames de datos   & Transportan información real del usuario: páginas web, mensajes, video, audio, etc. Aquí va el contenido cifrado por WPA2.}
+\end{datatable}
+
+\textbf{WARDEN se centra casi exclusivamente en frames de gestión}, porque
+ahí es donde se ven los ataques que estudiamos. Los beacons, los deauth,
+los probe responses son todos frames de gestión.
+
+\subsection{Por qué un cliente normal no ve la mayoría de los frames}
+Un dispositivo en operación normal opera en modo \emph{managed} (lo
+veremos a fondo más adelante). En este modo, la tarjeta WiFi descarta
+casi todos los frames que recibe del aire, salvo aquellos dirigidos
+específicamente a su MAC o a una dirección broadcast relevante. La
+mayoría de frames que pasan por el aire (beacons de redes vecinas, ACKs
+ajenos, datos de otros dispositivos) son ignorados antes de que el sistema
+operativo los vea.
+
+Esto es eficiente para uso normal, pero hace imposible la detección de
+ataques. Un atacante puede emitir cientos de frames maliciosos y un
+cliente normal ni se entera. Para verlos, hay que cambiar el modo de
+operación de la tarjeta, lo que nos lleva al concepto siguiente.
+
+% ==============================================================================
+\section{Modos de operación de una tarjeta WiFi}
+% ==============================================================================
+
+\subsection{La misma tarjeta, distintos modos}
+Una tarjeta WiFi puede operar en varios modos, configurables por software.
+Los más relevantes son:
+
+\begin{datatable}{L{3cm} L{12.8cm}}{Modo & Comportamiento}
+\drow{Managed   & Modo cliente. La tarjeta se asocia a un AP y solo recibe frames dirigidos a ella. Es el modo por defecto en cualquier laptop o celular.}
+\drow{AP        & La tarjeta actúa como Access Point: emite beacons, acepta conexiones de clientes. Es el modo de un router WiFi o un hotspot de celular.}
+\drow{Monitor   & Modo ``oyente pasivo''. La tarjeta no se asocia a ninguna red y captura \emph{todos} los frames que recibe en el canal sintonizado, sin filtrar por destinatario.}
+\drow{Mesh, IBSS, P2P & Modos para arquitecturas específicas (redes ad-hoc, redes mesh, conexiones directas tipo Wi-Fi Direct). No los usamos en WARDEN.}
+\end{datatable}
+
+\subsection{Modo monitor: el modo ``Dios'' para análisis}
+El modo monitor convierte a la tarjeta en un sensor pasivo del aire. En este
+modo, la tarjeta:
+
+\begin{itemize}
+  \item No se conecta a ninguna red.
+  \item No transmite nada (en operación pura, aunque algunos drivers
+    permiten también inyección).
+  \item Recibe \emph{cada frame} 802.11 que llega físicamente al
+    adaptador, sin importar el destinatario.
+  \item Entrega esos frames al sistema operativo con todos sus metadatos
+    intactos: encabezado de capa de enlace, información de radiofrecuencia
+    (potencia de señal recibida, canal exacto, modulación usada), etc.
+\end{itemize}
+
+Es la capacidad fundamental que hace posible el subsistema defensivo de
+WARDEN. Sin modo monitor, no podemos ver beacons falsos, no podemos ver
+deauths dirigidos a otros, no podemos detectar nada.
+
+\subsection{No todos los adaptadores soportan modo monitor}
+Aquí hay un detalle crítico: \textbf{la mayoría de adaptadores WiFi en
+laptops y celulares no soportan modo monitor en Linux}, no porque el chip
+no pueda hacerlo físicamente, sino porque el driver del fabricante no lo
+expone. Los fabricantes desactivan deliberadamente esta capacidad por
+varias razones (simplificación, supuestas mejoras de seguridad, requisitos
+regulatorios mal interpretados).
+
+Por eso, en proyectos como WARDEN se utilizan adaptadores específicos cuyos
+drivers libres soportan bien el modo monitor. El \textbf{Panda Wireless
+PAU0B AC600}, con chipset MediaTek MT7610U, es uno de esos adaptadores. Su
+driver Linux (\texttt{mt76x0u}) es de código abierto y permite modo monitor
+estable en la banda 2.4 GHz.
+
+\subsection{Implicación para el laboratorio WARDEN}
+La estación detectora del proyecto necesita el adaptador Panda
+\emph{específicamente porque} la WiFi interna de la laptop, en la mayoría de
+casos, no soporta modo monitor. El Panda no es un capricho ni una mejora de
+rendimiento: es una pieza imprescindible de hardware sin la cual el
+proyecto no es posible.
+
+% ==============================================================================
+\section{Cómo se conecta un cliente a una red: la asociación}
+% ==============================================================================
+
+\subsection{Pasos de una conexión WiFi normal}
+Cuando una laptop o celular ``se conecta a una WiFi'', el proceso interno
+involucra varios pasos que el usuario no ve:
+
+\begin{enumerate}
+  \item \textbf{Descubrimiento.} El cliente escucha beacons o emite
+    \emph{probe requests} preguntando ``¿está la red X cerca?''. Los APs
+    responden con \emph{probe responses}.
+  \item \textbf{Autenticación.} El cliente envía un frame de autenticación.
+    En redes modernas este paso es trivial (siempre se aprueba); el
+    ``verdadero'' control de acceso ocurre después con WPA2.
+  \item \textbf{Asociación.} El cliente envía una \emph{Association
+    Request} al AP. Si el AP acepta, responde con una \emph{Association
+    Response} y desde ese momento el cliente está ``asociado'' a esa red.
+  \item \textbf{Handshake WPA2 (de 4 vías).} En redes con WPA2, después de
+    la asociación se ejecuta un intercambio de 4 mensajes que establece la
+    clave de cifrado de la sesión. Sin este paso, el cliente está asociado
+    pero no puede transmitir datos.
+  \item \textbf{Tráfico cifrado.} A partir de aquí, todos los frames de
+    datos van cifrados con la clave establecida en el handshake.
+\end{enumerate}
+
+\subsection{Por qué importa entender los pasos}
+Cada uno de estos pasos involucra frames específicos visibles en el aire.
+El detector de WARDEN observa estos frames para distinguir entre tráfico
+normal y patrones anómalos asociados a ataques. Por ejemplo, un cliente
+normal emite \emph{probe requests} de manera intermitente; un cliente bajo
+ataque de deauth los emite repetidamente porque está intentando reconectarse.
+
+% ==============================================================================
+\section{El handshake WPA2 y por qué un atacante quiere capturarlo}
+% ==============================================================================
+
+\subsection{¿Qué es el handshake?}
+El \textbf{handshake de 4 vías} (en inglés \emph{4-way handshake}) es un
+intercambio de cuatro mensajes que ocurre cada vez que un cliente se conecta
+a una red WPA2. El propósito es que ambos extremos (cliente y AP) deriven
+una clave de cifrado de sesión sin nunca enviar la contraseña real por el
+aire.
+
+El nombre técnico de este protocolo es \textbf{4-Way Handshake EAPOL}. Los
+mensajes contienen valores aleatorios, identificadores, y un código MIC
+(Message Integrity Code) que prueba que ambos extremos conocen la
+contraseña, sin exponerla.
+
+\subsection{¿Por qué un atacante captura el handshake?}
+Aunque la contraseña real nunca viaja por el aire, los mensajes del
+handshake contienen información derivada de ella. Un atacante que captura
+los cuatro mensajes puede luego, \textbf{offline} (sin conectividad ni
+interacción con la red), probar contraseñas candidatas a alta velocidad
+hasta encontrar una que produzca el mismo MIC. Esto es el llamado ``ataque
+de diccionario offline''.
+
+\textbf{El handshake es el activo principal en ataques contra WPA2.} Si un
+atacante lo captura y la contraseña es débil (común, predecible, en algún
+diccionario público), puede recuperar la contraseña en minutos u horas.
+
+\subsection{¿Cómo se captura el handshake?}
+El handshake solo ocurre en el momento de la conexión. Hay dos formas de
+capturarlo:
+
+\begin{itemize}
+  \item \textbf{Esperar pasivamente} a que un cliente se conecte
+    naturalmente (pueden ser horas o días).
+  \item \textbf{Forzar la captura} desconectando a un cliente ya conectado
+    para que se reconecte de inmediato. Esto se hace con un ataque de
+    \textbf{deauthentication}, que veremos a continuación.
+\end{itemize}
+
+\subsection{Aclaración importante para WARDEN}
+El proyecto WARDEN \emph{no incluye} cracking offline de contraseñas. La
+captura del handshake aparece en el documento de laboratorio solo como
+ejercicio de práctica para entender cómo se ven los deauths en el aire.
+WARDEN se enfoca en \emph{detectar} los ataques, no en explotarlos hasta el
+final.
+
+% ==============================================================================
+\section{Beacons: el ``latido'' de cada red WiFi}
+% ==============================================================================
+
+\subsection{¿Qué es un beacon?}
+Un \textbf{beacon} (en español ``baliza'') es un frame de gestión que cada
+Access Point emite \textbf{periódicamente} para anunciar su existencia. La
+frecuencia típica es cada 102.4 milisegundos, lo que da aproximadamente 10
+beacons por segundo por cada AP activo.
+
+Cada beacon contiene:
+
+\begin{itemize}
+  \item \textbf{SSID:} el nombre de la red.
+  \item \textbf{BSSID:} la MAC del AP.
+  \item \textbf{Capacidades:} qué cifrados soporta (WPA2, WPA3, abierto,
+    etc.), qué velocidades, etc.
+  \item \textbf{Información de canal y banda.}
+  \item \textbf{Marca de tiempo y número de secuencia.}
+\end{itemize}
+
+\subsection{¿Para qué sirven los beacons?}
+Los beacons son lo que permite que tu celular o laptop muestre una lista
+de redes WiFi disponibles. Cuando abres la configuración WiFi y ves ``Mi
+Red'', ``Vecino123'', ``Cafetería UTP'', lo que estás viendo es la información
+extraída de los beacons que esas redes están emitiendo continuamente.
+
+\subsection{¿Qué es el Beacon Flooding?}
+El \textbf{Beacon Flooding} (inundación de beacons) es un ataque que
+consiste en \textbf{emitir miles de beacons falsos por segundo}, cada uno
+anunciando una red distinta con SSID y BSSID inventados. El efecto es:
+
+\begin{itemize}
+  \item La lista de redes WiFi de los dispositivos cercanos se llena de
+    redes falsas.
+  \item Las herramientas automatizadas que escanean redes (incluidos
+    sistemas de seguridad) tienen dificultades para distinguir señal real
+    de ruido.
+  \item En casos extremos, algunos clientes presentan errores o lentitud.
+\end{itemize}
+
+Es la primera fase de la cadena ofensiva de WARDEN. Su firma de detección
+es relativamente clara: una tasa de beacons únicos por segundo muy
+superior a lo normal, todos provenientes del mismo emisor físico (la
+ESP32).
+
+% ==============================================================================
+\section{Deauthentication: el ``cuelgue forzado''}
+% ==============================================================================
+
+\subsection{¿Qué es un frame de deauthentication?}
+Un frame de \textbf{deauthentication} (abreviado \textbf{deauth}) es un
+frame de gestión que indica el fin de una sesión de autenticación. Cuando
+un cliente se desconecta voluntariamente de una red, su sistema operativo
+envía un deauth al AP. Cuando el AP necesita expulsar a un cliente (por
+ejemplo, por sobrecarga), envía un deauth al cliente.
+
+En operación normal, los deauths son raros: solo aparecen cuando alguien
+cierra la WiFi, sale de cobertura, o se reinicia un router.
+
+\subsection{El gran problema de los deauths}
+Aquí está la vulnerabilidad histórica de 802.11: \textbf{los frames de
+deauth no estaban autenticados}. Esto significa que cualquiera puede
+fabricar un deauth haciéndose pasar por el AP legítimo, y el cliente lo
+acepta sin cuestionar. Una vez recibido, el cliente se desconecta
+inmediatamente.
+
+Un atacante con un adaptador WiFi y conocimiento básico puede emitir
+deauths a voluntad y desconectar a cualquier cliente cercano de su red.
+
+\subsection{¿Para qué sirve un ataque de deauth?}
+El deauth raramente es un fin en sí mismo. Su utilidad es habilitar otros
+ataques:
+
+\begin{itemize}
+  \item \textbf{Forzar reconexión}, para capturar el handshake WPA2.
+  \item \textbf{Forzar reconexión}, para que el cliente se conecte a un
+    Evil Twin que el atacante tiene preparado (esta es la fase 2 de la
+    cadena WARDEN).
+  \item \textbf{Denegación de servicio}, manteniendo a una víctima
+    desconectada por tiempo prolongado.
+\end{itemize}
+
+\subsection{La mitigación: 802.11w (PMF)}
+En 2009 se publicó la enmienda 802.11w, también llamada \textbf{Protected
+Management Frames (PMF)}, que añade autenticación a los frames de gestión
+(incluidos los deauths). Cuando un cliente y un AP soportan PMF, los
+deauths falsificados son ignorados.
+
+PMF es obligatorio en WPA3 pero opcional en WPA2. La mayoría de equipos
+domésticos modernos lo soportan pero no lo activan por defecto. Para
+WARDEN, el router de laboratorio se configurará sin PMF para que los
+ataques sean reproducibles.
+
+% ==============================================================================
+\section{Evil Twin: el ``gemelo malvado''}
+% ==============================================================================
+
+\subsection{La idea del ataque}
+Un \textbf{Evil Twin} es un Access Point malicioso que imita el SSID de
+una red legítima con la intención de engañar a clientes para que se
+conecten a él en lugar de al AP real. Una vez conectado al Evil Twin, el
+atacante controla todo el tráfico del cliente: puede observarlo,
+modificarlo, redirigirlo, o simplemente capturar las credenciales que el
+cliente intente enviar.
+
+\subsection{¿Por qué funciona?}
+La razón principal es que los dispositivos WiFi modernos (celulares,
+laptops) están configurados para \textbf{reconectarse automáticamente} a
+redes conocidas. Cuando un dispositivo ve un SSID al que se ha conectado
+antes, intenta conectarse sin pedir confirmación al usuario.
+
+Si el Evil Twin se anuncia con el mismo SSID que una red conocida y, por
+algún motivo, el cliente prefiere conectarse a él (por ejemplo, porque la
+red real fue desconectada con un deauth), el cliente cae en la trampa sin
+darse cuenta.
+
+\subsection{Variantes del Evil Twin}
+Existen dos variantes principales:
+
+\begin{itemize}
+  \item \textbf{Evil Twin abierto:} El AP malicioso se anuncia como red
+    abierta (sin contraseña). Funciona porque muchos clientes, al ver una
+    red conocida abierta, se conectan asumiendo que es una versión ``guest''
+    legítima.
+  \item \textbf{Evil Twin protegido:} El AP malicioso replica también la
+    configuración de seguridad de la red real. Es más difícil de
+    implementar pero más convincente.
+\end{itemize}
+
+WARDEN implementa la variante \textbf{abierta}, que es la más usada en
+ataques reales y la más fácil de demostrar.
+
+\subsection{El portal cautivo: el cierre del ataque}
+Una vez que la víctima se conecta al Evil Twin, el atacante necesita
+capturar algo de valor. La técnica clásica es presentar un \textbf{portal
+cautivo falso}: una página web que aparece automáticamente al conectarse
+a una red abierta, normalmente para ``iniciar sesión'' o ``aceptar términos''.
+
+Los usuarios están acostumbrados a ver portales cautivos en aeropuertos,
+hoteles y cafeterías, así que un portal falso bien hecho no levanta
+sospechas. Cuando el usuario ingresa sus credenciales (correo,
+contraseña, número de teléfono), estas son capturadas por el atacante.
+
+En WARDEN, el portal cautivo es una página web minimalista servida por la
+propia ESP32, que registra los datos ingresados y los muestra por consola
+serial como evidencia de captura exitosa. Las credenciales utilizadas
+durante las pruebas son siempre ficticias.
+
+% ==============================================================================
+\section{La cadena de ataque WARDEN: las tres fases en orden}
+% ==============================================================================
+
+\subsection{Por qué las tres fases tienen sentido juntas}
+Hasta aquí hemos visto los tres ataques por separado. Lo crítico para
+entender WARDEN es que en la práctica real \emph{rara vez se ejecutan
+solos}: se encadenan en una secuencia que multiplica su efectividad. La
+cadena completa es:
+
+\begin{enumerate}
+  \item \textbf{Beacon Flooding (Reconocimiento y Distracción).} El
+    atacante satura el entorno con beacons falsos. La víctima ve
+    decenas de redes nuevas en su lista; el ruido reduce su capacidad de
+    distinguir lo legítimo de lo sospechoso.
+  \item \textbf{Deauthentication (Aislamiento).} El atacante desconecta a
+    la víctima de su red real con frames de deauth falsificados. La
+    víctima pierde su conexión y comienza a buscar redes para
+    reconectarse.
+  \item \textbf{Evil Twin (Explotación).} El atacante presenta un AP
+    abierto con el SSID de la red real. La víctima, configurada para
+    reconectarse automáticamente y viendo su red conocida disponible, se
+    conecta al Evil Twin. El portal cautivo falso captura sus
+    credenciales.
+\end{enumerate}
+
+\subsection{Por qué esta cadena es la firma del proyecto}
+WARDEN no detecta tres ataques aislados: detecta una \emph{cadena} con un
+patrón temporal específico. Tres firmas en intervalo corto (Beacon Flood,
+luego Deauth, luego Evil Twin) son una evidencia mucho más fuerte de un
+ataque coordinado que cualquiera de las firmas por separado. Esto es lo
+que hace que el proyecto sea conceptualmente más interesante que un IDS
+simple basado en una sola regla.
+
+% ==============================================================================
+\section{Cierre y mapa de lectura siguiente}
+% ==============================================================================
+
+Si llegaste hasta aquí entendiendo la mayor parte, ya tienes el modelo
+mental que necesitas para participar en WARDEN. Los términos y conceptos
+clave que ahora deberías conocer:
+
+\begin{itemize}
+  \item Qué es WiFi, qué es 802.11, y por qué se trabaja en 2.4 GHz.
+  \item Qué son los canales y por qué un adaptador solo puede oír uno a
+    la vez.
+  \item Qué es una dirección MAC, qué es BSSID, qué es SSID y la
+    diferencia entre ambos.
+  \item Qué es un frame y los tres tipos principales (gestión, control,
+    datos).
+  \item Qué es modo monitor y por qué necesitamos el adaptador Panda.
+  \item Qué es un beacon, un deauth, una asociación, un handshake.
+  \item Qué es Beacon Flooding, qué es un ataque de Deauth, qué es un
+    Evil Twin, y por qué los tres encadenados son más potentes que
+    cualquiera por separado.
+\end{itemize}
+
+\subsection{Siguiente lectura}
+Con estos fundamentos asimilados, el siguiente documento que conviene leer
+es \emph{WARDEN - Manual de Laboratorio}, que toma todos los conceptos
+explicados aquí y los aterriza en comandos concretos sobre Linux, paso a
+paso, para que puedas reproducir los tres ataques de forma manual antes
+de que los automaticemos en la ESP32.
+
+El manual de laboratorio asume que ya entendiste este documento. Si en
+algún momento durante la práctica algo no tiene sentido, lo más probable
+es que la respuesta esté aquí.
+
+\end{document}

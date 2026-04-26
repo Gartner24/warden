@@ -1,0 +1,2434 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Documento de Diseño Detallado}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+% Paquete para bloques de codigo / pseudocodigo
+\usepackage{listings}
+\lstdefinestyle{wardencode}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{wardenhighlight},
+  frame=single,
+  rulecolor=\color{wardenrule},
+  framesep=4pt,
+  framerule=0.4pt,
+  xleftmargin=8pt,
+  xrightmargin=8pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  keepspaces=true,
+  showstringspaces=false,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'\i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+\lstset{style=wardencode}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento describe el diseño detallado del sistema WARDEN, ofreciendo
+suficiente información técnica para que la implementación pueda llevarse a
+cabo de manera consistente y correcta por cualquier integrante del equipo.
+
+A diferencia del Documento de Arquitectura, que describe la estructura
+general del sistema y sus componentes a alto nivel, este documento entra
+al detalle de cada componente: sus estructuras de datos, algoritmos,
+interfaces y formatos de mensaje. Donde las decisiones de implementación
+puedan refinarse durante la construcción, se indica explícitamente.
+
+\subsection{Audiencia}
+Este documento está dirigido principalmente a los integrantes del equipo
+de desarrollo, que lo utilizarán como guía durante la implementación.
+También sirve como evidencia para el profesor evaluador del nivel de
+detalle del análisis técnico realizado antes de codificar.
+
+\subsection{Alcance}
+El documento cubre el diseño detallado de los dos subsistemas:
+
+\begin{itemize}
+  \item Subsistema Ofensivo (firmware ESP32): estructuras de datos,
+    pseudocódigo de cada módulo, formato de frames generados, protocolo
+    de consola serial, diseño del portal cautivo.
+  \item Subsistema Defensivo (detector Python): estructuras de datos,
+    algoritmos de análisis, formato de alertas, manejo de configuración.
+\end{itemize}
+
+Los detalles que no están cubiertos en este documento (porque dependen
+de la implementación real) incluyen: nombres exactos de funciones,
+manejo de excepciones específicas, optimizaciones internas. Estos
+quedan a criterio del implementador, siempre que no contradigan el
+diseño aquí descrito.
+
+\subsection{Convención de Pseudocódigo}
+A lo largo de este documento se utiliza pseudocódigo en español con
+sintaxis simplificada. La intención es comunicar la lógica con claridad,
+no producir código compilable. Cuando el pseudocódigo es trivial de
+traducir a Python o C++, se usa una notación cercana al lenguaje destino.
+
+\subsection{Referencias}
+\begin{itemize}
+  \item Documento WARDEN \emph{Documento de Arquitectura}.
+  \item Documento WARDEN \emph{Especificación de Requerimientos de Software}.
+  \item Documento WARDEN \emph{Documento de Casos de Uso}.
+  \item Documento WARDEN \emph{Threat Model y Cadena de Ataque}.
+  \item IEEE Std 802.11-2020.
+\end{itemize}
+
+% ==============================================================================
+\section{Diseño del Subsistema Ofensivo}
+% ==============================================================================
+
+\subsection{Estructuras de Datos Principales}
+
+\subsubsection{Configuración global}
+La configuración del firmware se almacena en una estructura única que
+todos los módulos consultan. Se inicializa con valores por defecto al
+arranque y puede modificarse por consola serial.
+
+\begin{lstlisting}
+struct WardenConfig {
+    uint8_t  bssid_objetivo[6];        // BSSID del router de laboratorio
+    char     ssid_objetivo[33];        // SSID a clonar en Evil Twin
+    uint8_t  canal;                    // Canal 802.11 (1-13)
+    uint32_t duracion_beacon_flood;    // segundos, default 30
+    uint32_t duracion_deauth;          // segundos, default 15
+    uint32_t duracion_evil_twin;       // segundos, default 120
+    uint32_t beacons_por_segundo;      // tasa de Beacon Flood, default 50
+    char     prefijo_ssid_falso[16];   // para Beacon Flood, default "FakeNet"
+    bool     bssid_validado;           // resultado del Validador Ético
+};
+\end{lstlisting}
+
+\subsubsection{Estado de la cadena}
+El Controlador de Cadena mantiene una máquina de estados explícita:
+
+\begin{lstlisting}
+enum EstadoCadena {
+    IDLE,           // esperando comandos
+    FASE_1_BEACON,  // ejecutando Beacon Flooding
+    FASE_2_DEAUTH,  // ejecutando Deauthentication
+    FASE_3_EVIL,    // ejecutando Evil Twin
+    FINALIZADO,     // cadena completada, retornando a IDLE
+    ERROR           // estado inalcanzable durante operacion normal
+};
+
+struct EstadoCadenaInfo {
+    EstadoCadena    estado_actual;
+    uint32_t        tiempo_inicio_fase;   // millis() al entrar a la fase
+    uint32_t        beacons_emitidos;     // contador fase 1
+    uint32_t        deauths_emitidos;     // contador fase 2
+    uint32_t        clientes_conectados;  // contador fase 3
+    uint32_t        credenciales_capturadas;  // contador fase 3
+};
+\end{lstlisting}
+
+\subsubsection{Registro de credenciales capturadas}
+Las credenciales recibidas en el portal cautivo se almacenan
+exclusivamente en memoria volátil (RNF-SYS-005):
+
+\begin{lstlisting}
+struct CredencialCapturada {
+    uint32_t   timestamp_millis;       // millis() al recibir
+    char       cliente_ip[16];         // IP del cliente, formato ASCII
+    char       usuario[64];            // texto recibido por POST
+    char       password[64];           // texto recibido por POST
+};
+
+// Buffer circular de tamaño fijo, max 16 credenciales
+CredencialCapturada credenciales[16];
+int credenciales_count;
+\end{lstlisting}
+
+\subsection{Validador Ético: Algoritmo}
+
+El Validador Ético es invocado cada vez que se intenta cambiar el BSSID
+objetivo (UC-06). Implementa una validación de ``buena fe'' que rechaza
+configuraciones obviamente externas al laboratorio.
+
+\begin{lstlisting}
+funcion validar_bssid(bssid):
+    # Lista negra de prefijos OUI conocidos de fabricantes
+    # comerciales mayoritarios (ejemplo: routers ISP comunes
+    # en Colombia). Si el BSSID coincide con un OUI de esta
+    # lista y NO coincide con la MAC del router de laboratorio
+    # ya conocida, se rechaza.
+
+    si bssid == bssid_router_laboratorio_conocido:
+        retornar VALIDO
+
+    si oui(bssid) en LISTA_NEGRA_OUI_ISP:
+        retornar RECHAZADO_OUI_EXTERNO
+
+    si bssid es broadcast (FF:FF:FF:FF:FF:FF):
+        retornar RECHAZADO_BROADCAST
+
+    si bssid es null (00:00:00:00:00:00):
+        retornar RECHAZADO_INVALIDO
+
+    # Para cualquier otro BSSID, se acepta solo si el operador
+    # confirma explicitamente con el comando "set bssid X confirm"
+    si comando_incluye_confirm:
+        retornar VALIDO_CON_CONFIRMACION
+
+    retornar REQUIERE_CONFIRMACION
+\end{lstlisting}
+
+\subsection{Módulo Beacon Flood: Pseudocódigo}
+
+\begin{lstlisting}
+funcion iniciar_beacon_flood(config):
+    log_serial("Iniciando Beacon Flooding en canal " + config.canal)
+    cambiar_modo_wifi_a_promiscuo()
+    fijar_canal(config.canal)
+
+    tiempo_fin = millis() + config.duracion_beacon_flood * 1000
+    intervalo_us = 1_000_000 / config.beacons_por_segundo
+    contador = 0
+
+    mientras millis() < tiempo_fin y no hay_comando_stop():
+        # Generar SSID y BSSID falsos
+        ssid_falso = config.prefijo_ssid_falso + str(contador)
+        bssid_falso = generar_bssid_aleatorio()
+
+        # Construir frame beacon
+        frame = construir_beacon(ssid_falso, bssid_falso, config.canal)
+
+        # Emitir
+        emitir_frame(frame)
+
+        contador = contador + 1
+        delay_microsegundos(intervalo_us)
+
+    log_serial("Beacon Flooding finalizado, beacons emitidos: " + contador)
+    retornar contador
+\end{lstlisting}
+
+\subsubsection{Estructura de un beacon falso}
+Cada beacon emitido sigue el formato 802.11 estándar para frames de
+gestión tipo \texttt{Beacon} (subtipo 0x08):
+
+\begin{datatable}{L{4cm} L{2cm} L{9.3cm}}{Campo & Bytes & Valor}
+\drow{Frame Control                & 2     & Tipo=Management (0), Subtipo=Beacon (8)}
+\drow{Duration                     & 2     & 0x0000}
+\drow{Destination Address          & 6     & FF:FF:FF:FF:FF:FF (broadcast)}
+\drow{Source Address (BSSID)       & 6     & BSSID falso generado aleatoriamente}
+\drow{BSSID                        & 6     & Mismo que Source Address}
+\drow{Sequence Control             & 2     & Incremental}
+\drow{Timestamp                    & 8     & millis() actual}
+\drow{Beacon Interval              & 2     & 100 (TUs, equivale a 102.4 ms)}
+\drow{Capability Information       & 2     & 0x0431 (red abierta, ESS)}
+\drow{SSID Element                 & var   & Tipo=0, Length, SSID falso}
+\drow{Supported Rates Element      & var   & Tipo=1, Length, tasas estándar}
+\drow{DS Parameter Set             & 3     & Tipo=3, Length=1, Canal}
+\end{datatable}
+
+\subsection{Módulo Deauth: Pseudocódigo}
+
+\begin{lstlisting}
+funcion iniciar_deauth(config):
+    log_serial("Iniciando Deauthentication contra BSSID " +
+               formato_mac(config.bssid_objetivo))
+
+    si NO config.bssid_validado:
+        log_serial("ERROR: BSSID no validado, abortando")
+        retornar ERROR_VALIDACION
+
+    cambiar_modo_wifi_a_promiscuo()
+    fijar_canal(config.canal)
+
+    tiempo_fin = millis() + config.duracion_deauth * 1000
+    contador = 0
+
+    mientras millis() < tiempo_fin y no hay_comando_stop():
+        # Construir frame deauth con BSSID legitimo como origen
+        frame = construir_deauth(
+            destino = FF:FF:FF:FF:FF:FF,           # broadcast a la red
+            origen  = config.bssid_objetivo,        # suplantando AP
+            bssid   = config.bssid_objetivo,
+            razon   = 7                             # "Class 3 frame"
+        )
+
+        emitir_frame(frame)
+        contador = contador + 1
+        delay_milisegundos(50)  # ~20 deauths por segundo
+
+    log_serial("Deauthentication finalizado, frames emitidos: " + contador)
+    retornar contador
+\end{lstlisting}
+
+\subsubsection{Estructura de un frame deauth}
+
+\begin{datatable}{L{4cm} L{2cm} L{9.3cm}}{Campo & Bytes & Valor}
+\drow{Frame Control                & 2     & Tipo=Management (0), Subtipo=Deauthentication (12)}
+\drow{Duration                     & 2     & 0x013A (314 us)}
+\drow{Destination Address          & 6     & Cliente víctima específico o broadcast}
+\drow{Source Address               & 6     & BSSID del router legítimo (suplantación)}
+\drow{BSSID                        & 6     & BSSID del router legítimo}
+\drow{Sequence Control             & 2     & Incremental}
+\drow{Reason Code                  & 2     & 7 (clase 3 frame recibido en estado no asociado)}
+\end{datatable}
+
+\subsection{Módulo Evil Twin: Pseudocódigo}
+
+\begin{lstlisting}
+funcion iniciar_evil_twin(config):
+    log_serial("Levantando Evil Twin con SSID " + config.ssid_objetivo)
+
+    # 1. Iniciar AP modo open
+    cambiar_modo_wifi_a_AP()
+    iniciar_AP(
+        ssid = config.ssid_objetivo,
+        canal = config.canal,
+        autenticacion = OPEN
+    )
+
+    # 2. Iniciar servidor DHCP
+    iniciar_dhcp_server(
+        ip_propia       = "10.0.0.1",
+        rango_inicio    = "10.0.0.10",
+        rango_fin       = "10.0.0.50",
+        gateway         = "10.0.0.1",
+        dns             = "10.0.0.1"
+    )
+
+    # 3. Iniciar servidor DNS local (resuelve todo a 10.0.0.1)
+    iniciar_dns_server(ip_resolucion = "10.0.0.1")
+
+    # 4. Iniciar servidor HTTP del portal cautivo
+    iniciar_http_server(puerto = 80, handler = portal_handler)
+
+    log_serial("Evil Twin activo. Esperando conexiones...")
+
+    tiempo_fin = millis() + config.duracion_evil_twin * 1000
+    mientras millis() < tiempo_fin y no hay_comando_stop():
+        # El loop principal cede tiempo a las tareas de los servidores
+        ceder_cpu()
+
+    detener_http_server()
+    detener_dns_server()
+    detener_dhcp_server()
+    detener_AP()
+
+    log_serial("Evil Twin finalizado. Clientes: " +
+               estado.clientes_conectados +
+               ", credenciales: " + estado.credenciales_capturadas)
+\end{lstlisting}
+
+\subsubsection{Servidor DNS local: lógica}
+El servidor DNS implementa una respuesta uniforme a cualquier consulta:
+
+\begin{lstlisting}
+funcion handler_dns(consulta):
+    # consulta es un paquete DNS estandar
+    dominio = extraer_dominio(consulta)
+
+    log_serial("DNS query: " + dominio)
+
+    # Construir respuesta apuntando a 10.0.0.1
+    respuesta = construir_respuesta_dns(
+        consulta = consulta,
+        ip       = "10.0.0.1",
+        ttl      = 60
+    )
+
+    enviar_respuesta(respuesta, cliente_origen)
+\end{lstlisting}
+
+\subsubsection{Portal cautivo: handler HTTP}
+
+\begin{lstlisting}
+funcion portal_handler(request):
+    si request.metodo == "GET":
+        # Servir la pagina HTML del portal
+        servir_archivo("portal.html", content_type="text/html")
+        retornar
+
+    si request.metodo == "POST" y request.path == "/captura":
+        # Procesar credenciales
+        usuario = parsear_form(request.body, "usuario")
+        password = parsear_form(request.body, "password")
+
+        # Almacenar en buffer volatil
+        credencial = CredencialCapturada {
+            timestamp_millis = millis(),
+            cliente_ip       = request.cliente_ip,
+            usuario          = usuario,
+            password         = password
+        }
+        credenciales.push(credencial)
+        estado.credenciales_capturadas = estado.credenciales_capturadas + 1
+
+        # Logar por serial
+        log_serial("[CREDENCIALES CAPTURADAS]")
+        log_serial("  IP cliente: " + request.cliente_ip)
+        log_serial("  Usuario: " + usuario)
+        log_serial("  Password: " + password)
+        log_serial("  Timestamp: " + millis())
+
+        # Responder con pagina de exito (demo)
+        servir_string("<h1>Sesion iniciada (demo)</h1>",
+                      content_type="text/html")
+        retornar
+
+    # Cualquier otra ruta o metodo, redirigir al portal
+    redireccion(307, "/")
+\end{lstlisting}
+
+\subsubsection{Página HTML del portal cautivo}
+El archivo \texttt{portal.html} embebido en el firmware es el siguiente
+(simplificado):
+
+\begin{lstlisting}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Re-autenticacion requerida</title>
+</head>
+<body style="font-family: sans-serif; max-width: 500px; margin: 50px auto;">
+  <div style="border: 3px solid red; padding: 10px; margin-bottom: 20px;">
+    <strong>WARDEN - DEMOSTRACION EDUCATIVA</strong><br>
+    Este es un portal cautivo falso usado solo para fines educativos.<br>
+    No ingreses credenciales reales.
+  </div>
+  <h1>Re-autenticacion requerida</h1>
+  <p>Por favor inicia sesion para continuar.</p>
+  <form action="/captura" method="POST">
+    <p>Usuario: <input type="text" name="usuario" required></p>
+    <p>Contrasena: <input type="password" name="password" required></p>
+    <p><button type="submit">Iniciar sesion</button></p>
+  </form>
+</body>
+</html>
+\end{lstlisting}
+
+\subsection{Diseño de la API REST de la ESP32}
+
+El firmware ofensivo expone una API REST en \texttt{192.168.4.1:80}
+accesible desde la red WiFi \texttt{WARDEN\_CONTROL}. Todos los endpoints
+retornan JSON. Esta sección especifica los endpoints, sus parámetros y
+sus esquemas de respuesta.
+
+\subsubsection{AP de Control: configuración}
+
+El AP \texttt{WARDEN\_CONTROL} se levanta al arranque de la ESP32
+mientras no hay un ataque en curso:
+
+\begin{lstlisting}
+funcion iniciar_ap_control():
+    config_ap = {
+        ssid: "WARDEN_CONTROL",
+        password: "warden-control-pwd",  # WPA2-PSK
+        canal: 1,
+        ip_propia: "192.168.4.1",
+        rango_dhcp: "192.168.4.10 - 192.168.4.50"
+    }
+    iniciar_AP(config_ap)
+    log_serial("AP de Control activo en 192.168.4.1")
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /status}
+
+Retorna el estado actual del firmware. Pensado para que el panel
+verifique la conectividad y lea contadores en vivo.
+
+\begin{lstlisting}
+GET /status
+
+Respuesta 200 OK:
+{
+  "estado_cadena": "IDLE",   // IDLE | FASE_1 | FASE_2 | FASE_3 | FINALIZADO
+  "fase_inicio_ms": 0,
+  "uptime_ms": 543210,
+  "contadores": {
+    "beacons_emitidos": 0,
+    "deauths_emitidos": 0,
+    "clientes_evil_twin": 0,
+    "credenciales_capturadas": 0
+  },
+  "ataque_activo": false
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /scan}
+
+Ejecuta un escaneo activo de redes WiFi 2.4 GHz. Bloqueante durante
+aproximadamente 10 segundos.
+
+\begin{lstlisting}
+GET /scan
+
+Respuesta 200 OK:
+{
+  "duracion_seg": 10,
+  "redes_encontradas": 8,
+  "redes": [
+    {
+      "ssid": "LAB_WARDEN_UTP",
+      "bssid": "e4:ab:89:d6:9b:80",
+      "canal": 6,
+      "rssi_dbm": -42,
+      "cifrado": "WPA2"
+    },
+    {
+      "ssid": "VECINO_WIFI",
+      "bssid": "aa:bb:cc:dd:ee:ff",
+      "canal": 11,
+      "rssi_dbm": -78,
+      "cifrado": "WPA2"
+    },
+    ...
+  ]
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /clients}
+
+Captura pasivamente frames dirigidos a un BSSID objetivo y retorna las
+MACs detectadas. Bloqueante durante \texttt{duration\_seg} segundos
+(default 30).
+
+\begin{lstlisting}
+GET /clients?bssid=e4:ab:89:d6:9b:80&duration=30
+
+Respuesta 200 OK:
+{
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "duracion_captura_seg": 30,
+  "clientes_detectados": 2,
+  "clientes": [
+    {
+      "mac": "9c:ef:d5:f7:5a:e5",
+      "frames_observados": 47,
+      "primer_frame_ms": 1234,
+      "ultimo_frame_ms": 28876
+    },
+    {
+      "mac": "ac:5f:3e:11:22:33",
+      "frames_observados": 12,
+      "primer_frame_ms": 5678,
+      "ultimo_frame_ms": 27432
+    }
+  ]
+}
+
+Respuesta 400 Bad Request:
+{
+  "error": "BSSID requerido y debe tener formato XX:XX:XX:XX:XX:XX"
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /oui-lookup}
+
+Consulta la base de datos OUI embebida y retorna el fabricante asociado
+a una MAC.
+
+\begin{lstlisting}
+GET /oui-lookup?mac=9c:ef:d5:f7:5a:e5
+
+Respuesta 200 OK:
+{
+  "mac": "9c:ef:d5:f7:5a:e5",
+  "oui": "9c:ef:d5",
+  "fabricante": "Panda Wireless, Inc.",
+  "encontrado": true
+}
+
+Respuesta 200 OK (cuando no se encuentra):
+{
+  "mac": "11:22:33:44:55:66",
+  "oui": "11:22:33",
+  "fabricante": "Fabricante desconocido",
+  "encontrado": false
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /config y POST /config}
+
+Permite consultar y modificar la configuración operativa del firmware.
+
+\begin{lstlisting}
+GET /config
+
+Respuesta 200 OK:
+{
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "mac_victima": "9c:ef:d5:f7:5a:e5",
+  "ssid_clonar": "LAB_WARDEN_UTP",
+  "canal": 6,
+  "duraciones_seg": {
+    "beacon_flood": 30,
+    "deauth": 15,
+    "evil_twin": 120
+  }
+}
+
+POST /config
+Cuerpo de peticion:
+{
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "mac_victima": "9c:ef:d5:f7:5a:e5",
+  "ssid_clonar": "LAB_WARDEN_UTP",
+  "canal": 6,
+  "duraciones_seg": {
+    "beacon_flood": 30,
+    "deauth": 15,
+    "evil_twin": 120
+  }
+}
+
+Respuesta 200 OK: configuracion aceptada
+{
+  "ok": true,
+  "config": { ... echo de la config aplicada ... }
+}
+
+Respuesta 403 Forbidden: validador etico rechaza
+{
+  "ok": false,
+  "error": "BSSID en lista negra de OUIs externos. Configuracion rechazada.",
+  "codigo": "ETHICAL_VALIDATOR_REJECTED"
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: POST /attack/start}
+
+Inicia la cadena ofensiva con la configuración actual. Antes de
+iniciar, vuelve a invocar al Validador Ético sobre la configuración
+para garantizar la verificación.
+
+\begin{lstlisting}
+POST /attack/start
+Cuerpo de peticion:
+{
+  "modo": "cadena_automatica"   // cadena_automatica | beacon | deauth | eviltwin
+}
+
+Respuesta 200 OK:
+{
+  "ok": true,
+  "ataque_iniciado": "cadena_automatica",
+  "fase_inicial": "FASE_1"
+}
+
+Respuesta 403 Forbidden:
+{
+  "ok": false,
+  "error": "Configuracion no autorizada por validador etico"
+}
+
+Respuesta 409 Conflict:
+{
+  "ok": false,
+  "error": "Hay un ataque en curso. Detenga primero con POST /attack/stop"
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: POST /attack/stop}
+
+\begin{lstlisting}
+POST /attack/stop
+
+Respuesta 200 OK:
+{
+  "ok": true,
+  "fase_detenida": "FASE_2",
+  "duracion_seg": 47.3
+}
+
+Respuesta 200 OK (cuando no hay ataque):
+{
+  "ok": true,
+  "fase_detenida": null,
+  "mensaje": "No habia ataque en curso"
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /credentials}
+
+Retorna las credenciales ficticias capturadas durante la sesión actual
+(buffer volátil en RAM).
+
+\begin{lstlisting}
+GET /credentials
+
+Respuesta 200 OK:
+{
+  "total": 2,
+  "credenciales": [
+    {
+      "timestamp_ms": 187432,
+      "cliente_ip": "10.0.0.12",
+      "usuario": "demo.user@warden.test",
+      "password": "demo-password-12345"
+    },
+    {
+      "timestamp_ms": 195203,
+      "cliente_ip": "10.0.0.13",
+      "usuario": "test@example.com",
+      "password": "test123"
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsubsection{Endpoint: GET /events (Server-Sent Events)}
+
+Stream de eventos en tiempo real para que el panel actualice su vista
+sin polling agresivo. Implementación opcional con cabecera
+\texttt{Content-Type: text/event-stream}.
+
+\begin{lstlisting}
+GET /events
+
+Respuesta (stream continuo):
+event: phase_change
+data: {"fase": "FASE_2", "timestamp_ms": 30123}
+
+event: client_connected
+data: {"mac": "9c:ef:d5:f7:5a:e5", "ip": "10.0.0.12", "timestamp_ms": 145600}
+
+event: credential_captured
+data: {"usuario": "demo.user@warden.test", "ip": "10.0.0.12", "timestamp_ms": 145890}
+
+event: phase_change
+data: {"fase": "FINALIZADO", "timestamp_ms": 223456}
+\end{lstlisting}
+
+\subsection{Diseño del Frontend del Panel del Atacante}
+
+El frontend está implementado como una SPA (Single Page Application)
+ligera con HTML + JavaScript vanilla + Tailwind CSS via CDN.
+
+\subsubsection{Estructura de archivos}
+
+\begin{lstlisting}
+attacker-panel/
++-- index.html              (entry point, layout con tabs)
++-- assets/
+|   +-- panel.js            (logica principal del panel)
+|   +-- api-client.js       (wrapper de fetch para la API REST)
+|   +-- state.js            (estado global del panel)
+|   +-- views/
+|   |   +-- recon.js        (vista de reconocimiento)
+|   |   +-- ethics.js       (vista de confirmacion etica)
+|   |   +-- attack.js       (vista de ataque en vivo)
+|   |   +-- summary.js      (vista de resumen)
+|   +-- styles.css          (overrides minimos de Tailwind)
+\end{lstlisting}
+
+\subsubsection{Módulo api-client.js}
+
+\begin{lstlisting}
+// Cliente unificado de la API REST de la ESP32
+const ESP32_BASE_URL = "http://192.168.4.1";
+
+async function apiGet(path) {
+  const res = await fetch(ESP32_BASE_URL + path);
+  if (!res.ok) throw new Error("Error " + res.status);
+  return await res.json();
+}
+
+async function apiPost(path, body) {
+  const res = await fetch(ESP32_BASE_URL + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return { ok: res.ok, status: res.status, data: await res.json() };
+}
+
+// Wrappers semánticos
+const api = {
+  getStatus:       () => apiGet("/status"),
+  scanNetworks:    () => apiGet("/scan"),
+  detectClients:   (bssid) => apiGet("/clients?bssid=" + bssid),
+  ouiLookup:       (mac) => apiGet("/oui-lookup?mac=" + mac),
+  getConfig:       () => apiGet("/config"),
+  setConfig:       (cfg) => apiPost("/config", cfg),
+  startAttack:     (modo) => apiPost("/attack/start", { modo }),
+  stopAttack:      () => apiPost("/attack/stop", {}),
+  getCredentials:  () => apiGet("/credentials")
+};
+\end{lstlisting}
+
+\subsubsection{Estructura del estado global (state.js)}
+
+\begin{lstlisting}
+// Estado global del panel, actualizado por las vistas
+const state = {
+  vista_actual: "recon",          // recon | ethics | attack | summary
+  scan_resultados: [],
+  red_seleccionada: null,         // objeto de la red elegida
+  clientes_detectados: [],
+  victima_seleccionada: null,     // MAC elegida
+  etica_confirmada: false,
+  ataque_estado: null,            // status del firmware
+  credenciales: [],
+  poll_interval: null
+};
+
+function setEstado(parcial) {
+  Object.assign(state, parcial);
+  renderizar(state.vista_actual);
+}
+\end{lstlisting}
+
+\subsubsection{Vista en vivo del ataque (attack.js): polling}
+
+Durante el ataque, el panel hace polling al endpoint \texttt{/status}
+cada 1 segundo para refrescar contadores. Cuando detecta cambio de
+fase a \texttt{FINALIZADO} o cuando el operador presiona detener,
+transita a la vista de resumen.
+
+\begin{lstlisting}
+function iniciarMonitoreoAtaque() {
+  state.poll_interval = setInterval(async () => {
+    try {
+      const status = await api.getStatus();
+      setEstado({ ataque_estado: status });
+
+      // Refrescar credenciales cada poll
+      const creds = await api.getCredentials();
+      setEstado({ credenciales: creds.credenciales });
+
+      // Detectar fin del ataque
+      if (status.estado_cadena === "FINALIZADO" || status.estado_cadena === "IDLE") {
+        clearInterval(state.poll_interval);
+        setEstado({ vista_actual: "summary" });
+      }
+    } catch (err) {
+      // Conexion perdida (esperado durante Evil Twin)
+      mostrarMensaje("Conexion temporal no disponible (fase Evil Twin activa)");
+    }
+  }, 1000);
+}
+\end{lstlisting}
+
+\subsection{Protocolo de Consola Serial}
+
+La interfaz serial de la ESP32 utiliza UART a 115200 baudios. Acepta los
+siguientes comandos terminados en \texttt{\textbackslash n}:
+
+\begin{datatable}{L{5cm} L{10.3cm}}{Comando & Acción}
+\drow{\texttt{help}                              & Imprime la lista de comandos disponibles.}
+\drow{\texttt{status}                            & Imprime el estado actual de la cadena, configuración y contadores.}
+\drow{\texttt{set bssid XX:XX:XX:XX:XX:XX}       & Configura el BSSID objetivo. Pasa por el Validador Ético.}
+\drow{\texttt{set bssid XX:XX:XX:XX:XX:XX confirm} & Variante con confirmación explícita para BSSIDs no en lista negra.}
+\drow{\texttt{set ssid <NOMBRE>}                 & Configura el SSID a clonar para Evil Twin.}
+\drow{\texttt{set channel N}                     & Configura el canal (1-13).}
+\drow{\texttt{set duration <fase> <segundos>}    & Configura la duración de una fase (\texttt{beacon}, \texttt{deauth}, \texttt{eviltwin}).}
+\drow{\texttt{start}                             & Inicia la cadena automática (UC-01).}
+\drow{\texttt{beacon}                            & Ejecuta solo la fase de Beacon Flooding (UC-02).}
+\drow{\texttt{deauth}                            & Ejecuta solo la fase de Deauthentication (UC-03).}
+\drow{\texttt{eviltwin}                          & Ejecuta solo la fase de Evil Twin (UC-04).}
+\drow{\texttt{stop}                              & Detiene cualquier ataque en curso (UC-05).}
+\drow{\texttt{credentials}                       & Lista las credenciales capturadas en la sesión actual.}
+\drow{\texttt{reset}                             & Limpia el buffer de credenciales y reinicia contadores.}
+\end{datatable}
+
+\subsubsection{Formato de mensajes de salida}
+Todos los mensajes de salida del firmware siguen el formato:
+
+\begin{lstlisting}
+[NIVEL] [TIEMPO_MS] mensaje
+\end{lstlisting}
+
+Donde NIVEL es uno de: \texttt{INFO}, \texttt{WARN}, \texttt{ERROR},
+\texttt{ALERT}, y TIEMPO\_MS es \texttt{millis()} desde el arranque.
+
+Ejemplos:
+
+\begin{lstlisting}
+[INFO]  [12345] Iniciando Beacon Flooding en canal 6
+[INFO]  [42345] Beacon Flooding finalizado, beacons emitidos: 1500
+[ALERT] [89234] [CREDENCIALES CAPTURADAS]
+[ALERT] [89234]   Usuario: demo.user@warden.test
+[ALERT] [89234]   Password: demo-password-12345
+[ERROR] [00100] BSSID no validado, comando rechazado
+\end{lstlisting}
+
+\subsection{Diseño de la API REST}
+
+La ESP32 expone una API REST que el Panel del Atacante consume desde
+\texttt{http://192.168.4.1}. Todos los endpoints retornan JSON. Los
+errores se reportan con códigos HTTP estándar (400, 403, 404, 500) y
+un cuerpo JSON con el formato \texttt{\{``error'': ``mensaje''\}}.
+
+\subsubsection{Tabla de endpoints}
+
+\begin{datatable}{L{4cm} L{1.5cm} L{9.8cm}}{Endpoint & Método & Descripción}
+\drow{\texttt{/status}             & GET   & Estado actual del firmware (modo, fase, configuración mínima).}
+\drow{\texttt{/config}             & GET   & Configuración completa actual.}
+\drow{\texttt{/config}             & POST  & Actualiza la configuración. Pasa por Validador Ético.}
+\drow{\texttt{/scan}               & GET   & Inicia escaneo activo de redes y retorna la lista.}
+\drow{\texttt{/clients}            & GET   & Captura pasiva de clientes asociados a un BSSID. Acepta query \texttt{?bssid=XX}.}
+\drow{\texttt{/oui-lookup}         & GET   & Resuelve un OUI a fabricante. Acepta query \texttt{?mac=XX}.}
+\drow{\texttt{/attack/start}       & POST  & Inicia la cadena ofensiva con la configuración cargada.}
+\drow{\texttt{/attack/stop}        & POST  & Detiene cualquier ataque en curso.}
+\drow{\texttt{/attack/status}      & GET   & Estado actual del ataque (fase, contadores, tiempo restante).}
+\drow{\texttt{/credentials}        & GET   & Lista de credenciales ficticias capturadas en la sesión.}
+\drow{\texttt{/events}             & GET   & Server-Sent Events: stream de eventos en tiempo real.}
+\end{datatable}
+
+\subsubsection{Esquemas JSON}
+
+\textbf{GET /status} — respuesta:
+
+\begin{lstlisting}
+{
+  "uptime_ms": 458231,
+  "modo": "control",
+  "fase_actual": "idle",
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "ssid_objetivo": "LAB_WARDEN_UTP",
+  "canal": 6,
+  "control_ap_activo": true,
+  "api_disponible": true
+}
+\end{lstlisting}
+
+El campo \texttt{modo} puede tomar los valores \texttt{control},
+\texttt{ataque\_fase\_1}, \texttt{ataque\_fase\_2},
+\texttt{ataque\_fase\_3}, \texttt{finalizado}.
+
+\textbf{GET /scan} — respuesta:
+
+\begin{lstlisting}
+{
+  "duracion_seg": 10,
+  "redes_encontradas": 4,
+  "redes": [
+    {
+      "ssid": "LAB_WARDEN_UTP",
+      "bssid": "e4:ab:89:d6:9b:80",
+      "canal": 6,
+      "rssi": -42,
+      "cifrado": "WPA2-PSK"
+    },
+    {
+      "ssid": "Familia_Lopez",
+      "bssid": "aa:bb:cc:11:22:33",
+      "canal": 11,
+      "rssi": -68,
+      "cifrado": "WPA2-PSK"
+    }
+  ]
+}
+\end{lstlisting}
+
+\textbf{GET /clients?bssid=e4:ab:89:d6:9b:80} — respuesta:
+
+\begin{lstlisting}
+{
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "duracion_captura_seg": 30,
+  "clientes_detectados": 2,
+  "clientes": [
+    {
+      "mac": "9c:ef:d5:a1:b2:c3",
+      "frames_observados": 47,
+      "rssi_promedio": -55
+    },
+    {
+      "mac": "88:e9:fe:01:02:03",
+      "frames_observados": 12,
+      "rssi_promedio": -71
+    }
+  ]
+}
+\end{lstlisting}
+
+\textbf{GET /oui-lookup?mac=9c:ef:d5:a1:b2:c3} — respuesta:
+
+\begin{lstlisting}
+{
+  "mac_consultada": "9c:ef:d5:a1:b2:c3",
+  "oui": "9c:ef:d5",
+  "fabricante": "Xiaomi Communications Co Ltd",
+  "encontrado": true
+}
+\end{lstlisting}
+
+Cuando el OUI no está en la base de datos:
+
+\begin{lstlisting}
+{
+  "mac_consultada": "12:34:56:78:9a:bc",
+  "oui": "12:34:56",
+  "fabricante": null,
+  "encontrado": false
+}
+\end{lstlisting}
+
+\textbf{POST /config} — request:
+
+\begin{lstlisting}
+{
+  "bssid_objetivo": "e4:ab:89:d6:9b:80",
+  "mac_victima": "9c:ef:d5:a1:b2:c3",
+  "ssid_a_clonar": "LAB_WARDEN_UTP",
+  "canal": 6,
+  "duracion_beacon_flood_seg": 30,
+  "duracion_deauth_seg": 15,
+  "duracion_evil_twin_seg": 120
+}
+\end{lstlisting}
+
+Respuesta exitosa (HTTP 200):
+
+\begin{lstlisting}
+{
+  "configuracion_aceptada": true,
+  "validador_etico": "BSSID autorizado"
+}
+\end{lstlisting}
+
+Respuesta con rechazo ético (HTTP 403):
+
+\begin{lstlisting}
+{
+  "error": "BSSID rechazado por Validador Etico",
+  "razon": "El OUI corresponde a un fabricante de routers ISP comerciales",
+  "bssid_rechazado": "00:1a:2b:3c:4d:5e"
+}
+\end{lstlisting}
+
+\textbf{POST /attack/start} — request:
+
+\begin{lstlisting}
+{
+  "modo": "cadena_completa"
+}
+\end{lstlisting}
+
+El campo \texttt{modo} acepta: \texttt{cadena\_completa},
+\texttt{solo\_beacon}, \texttt{solo\_deauth}, \texttt{solo\_eviltwin}.
+
+Respuesta exitosa (HTTP 200):
+
+\begin{lstlisting}
+{
+  "ataque_iniciado": true,
+  "modo": "cadena_completa",
+  "tiempo_estimado_seg": 165
+}
+\end{lstlisting}
+
+\textbf{GET /attack/status} — respuesta durante un ataque activo:
+
+\begin{lstlisting}
+{
+  "ataque_activo": true,
+  "fase_actual": "deauth",
+  "tiempo_transcurrido_seg": 42,
+  "tiempo_restante_fase_seg": 3,
+  "contadores": {
+    "beacons_emitidos": 1487,
+    "deauths_emitidos": 234,
+    "clientes_conectados_evil_twin": 0,
+    "credenciales_capturadas": 0
+  }
+}
+\end{lstlisting}
+
+\textbf{GET /credentials} — respuesta:
+
+\begin{lstlisting}
+{
+  "total": 1,
+  "credenciales": [
+    {
+      "timestamp_ms": 89234,
+      "cliente_ip": "10.0.0.15",
+      "usuario": "demo.user@warden.test",
+      "password": "demo-password-12345"
+    }
+  ]
+}
+\end{lstlisting}
+
+\textbf{GET /events} — Server-Sent Events stream:
+
+\begin{lstlisting}
+event: fase_cambio
+data: {"nueva_fase": "deauth", "timestamp_ms": 12345}
+
+event: cliente_evil_twin_conectado
+data: {"mac_cliente": "9c:ef:d5:a1:b2:c3", "ip_asignada": "10.0.0.15"}
+
+event: credencial_capturada
+data: {"usuario": "demo.user@warden.test", "ip": "10.0.0.15"}
+
+event: ataque_finalizado
+data: {"duracion_seg": 165, "credenciales_total": 1}
+\end{lstlisting}
+
+\subsubsection{Manejo de CORS y autenticación}
+
+La API no implementa autenticación (la red \texttt{WARDEN\_CONTROL}
+funciona como aislamiento de control de acceso). Sí incluye headers
+\texttt{Access-Control-Allow-Origin: *} para permitir que el frontend
+hospedado en cualquier origen pueda consumir la API sin restricciones
+del navegador.
+
+\subsection{Diseño del Panel del Atacante (Frontend)}
+
+\subsubsection{Estructura de archivos}
+
+\begin{lstlisting}
+attacker-panel/
++-- index.html              (single page application)
++-- assets/
+|   +-- panel.js            (logica principal de la app)
+|   +-- api-client.js       (wrapper de fetch contra la ESP32)
+|   +-- state.js            (gestion de estado global)
+|   +-- styles.css          (overrides de Tailwind si aplica)
++-- README.md
+\end{lstlisting}
+
+\subsubsection{Vistas del Panel}
+
+El panel es una SPA (single-page application) con tres vistas
+principales gestionadas por un router simple en JavaScript vanilla:
+
+\begin{datatable}{L{3cm} L{12.3cm}}{Vista & Contenido}
+\drow{Reconocimiento  & Botones de ``Escanear redes'' y ``Detectar clientes''. Tablas de redes detectadas y clientes con sus fabricantes. Permite seleccionar red y víctima.}
+\drow{Confirmación    & Resumen del ataque a lanzar. Casilla de confirmación ética obligatoria. Botón ``Lanzar ataque'' que solo se habilita tras marcar la casilla.}
+\drow{Monitoreo       & Indicador de fase actual. Contadores en vivo. Lista de credenciales capturadas. Botón siempre visible de ``DETENER ATAQUE''. Resumen post-ataque cuando termina.}
+\end{datatable}
+
+\subsubsection{Cliente API: estructura}
+
+\begin{lstlisting}
+// api-client.js
+const API_BASE = "http://192.168.4.1";
+
+async function apiGet(path) {
+    const response = await fetch(API_BASE + path);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new ApiError(response.status, error);
+    }
+    return await response.json();
+}
+
+async function apiPost(path, body) {
+    const response = await fetch(API_BASE + path, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new ApiError(response.status, error);
+    }
+    return await response.json();
+}
+
+// API funcional expuesta al resto del frontend
+const api = {
+    getStatus:      () => apiGet("/status"),
+    scanNetworks:   () => apiGet("/scan"),
+    detectClients:  (bssid) => apiGet(`/clients?bssid=${bssid}`),
+    lookupOui:      (mac) => apiGet(`/oui-lookup?mac=${mac}`),
+    setConfig:      (cfg) => apiPost("/config", cfg),
+    startAttack:    (mode) => apiPost("/attack/start", {modo: mode}),
+    stopAttack:     () => apiPost("/attack/stop", {}),
+    getAttackStatus:() => apiGet("/attack/status"),
+    getCredentials: () => apiGet("/credentials"),
+    eventsStream:   () => new EventSource(API_BASE + "/events")
+};
+\end{lstlisting}
+
+\subsubsection{Gestión de estado}
+
+El frontend mantiene estado mínimo en memoria, sin localStorage (por la
+restricción de no persistencia entre sesiones):
+
+\begin{lstlisting}
+// state.js
+const state = {
+    redObjetivo: null,        // {ssid, bssid, canal, rssi, cifrado}
+    victimaSeleccionada: null,// {mac, fabricante}
+    eticaConfirmada: false,
+    ataqueActivo: false,
+    faseActual: null,         // null | "beacon_flood" | "deauth" | "evil_twin"
+    contadores: {
+        beacons: 0, deauths: 0, clientes: 0, credenciales: 0
+    },
+    credencialesCapturadas: [],
+    logsEvento: []            // ultimos 50 eventos del stream /events
+};
+\end{lstlisting}
+
+\subsection{Mockup textual del Panel del Atacante}
+
+A continuación se describe la estructura visual de la vista de
+monitoreo (la más compleja) en formato de mockup textual:
+
+\begin{lstlisting}
++--------------------------------------------------------------+
+|  WARDEN - Panel del Atacante               [Estado: ATAQUE] |
++--------------------------------------------------------------+
+|                                                              |
+|  Objetivo:  LAB_WARDEN_UTP (e4:ab:89:d6:9b:80) Canal 6      |
+|  Victima:   9c:ef:d5:a1:b2:c3 (Xiaomi Communications)        |
+|                                                              |
+|  +--------------------------------------------------------+  |
+|  |  FASE 2 DE 3 - DEAUTHENTICATION                        |  |
+|  |  [================================----] 80%           |  |
+|  |  Tiempo restante: 3 segundos                           |  |
+|  +--------------------------------------------------------+  |
+|                                                              |
+|  CONTADORES EN VIVO                                          |
+|  - Beacons emitidos:        1487                             |
+|  - Deauths emitidos:        234                              |
+|  - Clientes en Evil Twin:   0                                |
+|  - Credenciales capturadas: 0                                |
+|                                                              |
+|  CREDENCIALES CAPTURADAS                                     |
+|  (Aun no hay credenciales)                                   |
+|                                                              |
+|  LOG DE EVENTOS (ultimos 5)                                  |
+|  [12:34:01] Beacon Flooding iniciado                         |
+|  [12:34:31] Beacon Flooding completado                       |
+|  [12:34:31] Deauthentication iniciado                        |
+|                                                              |
+|              [  DETENER ATAQUE  ]  <-- siempre visible       |
+|                                                              |
++--------------------------------------------------------------+
+\end{lstlisting}
+
+% ==============================================================================
+\section{Diseño del Subsistema Defensivo}
+% ==============================================================================
+
+\subsection{Estructuras de Datos Principales}
+
+\subsubsection{Configuración del detector}
+
+\begin{lstlisting}
+class DetectorConfig:
+    iface: str                  # ej. "panda0", o None si modo PCAP
+    pcap_file: str              # path al archivo, o None si modo live
+    canal: int                  # canal monitoreado (1-13)
+    bssid_protegido: bytes      # MAC del router de laboratorio (6 bytes)
+    ssid_protegido: str         # SSID del router de laboratorio
+
+    # Umbrales de detección (configurables)
+    umbral_beacons_por_seg: int = 30        # tasa anómala
+    ventana_beacon_seg: int = 5             # ventana de medición
+    umbral_deauth_por_seg: int = 5          # tasa anómala
+    ventana_deauth_seg: int = 3
+    ventana_correlacion_seg: int = 60       # ventana para cadena
+
+    bssid_lista_blanca: list[bytes]         # BSSIDs conocidos seguros
+\end{lstlisting}
+
+\subsubsection{Ventanas temporales}
+
+Cada analizador mantiene una ventana móvil de eventos. Implementación
+recomendada con \texttt{collections.deque}:
+
+\begin{lstlisting}
+from collections import deque
+
+class VentanaTemporal:
+    def __init__(self, duracion_segundos):
+        self.duracion = duracion_segundos
+        self.eventos = deque()  # [(timestamp, dato), ...]
+
+    def agregar(self, timestamp, dato):
+        self.eventos.append((timestamp, dato))
+        self.purgar(timestamp)
+
+    def purgar(self, ahora):
+        # Elimina eventos mas viejos que la ventana
+        while self.eventos and (ahora - self.eventos[0][0]) > self.duracion:
+            self.eventos.popleft()
+
+    def conteo(self):
+        return len(self.eventos)
+
+    def conteo_unicos(self, indice_dato):
+        return len(set(e[1][indice_dato] for e in self.eventos))
+\end{lstlisting}
+
+\subsubsection{Registro de BSSIDs conocidos}
+El Analizador Evil Twin mantiene un mapa SSID -> set de BSSIDs:
+
+\begin{lstlisting}
+class RegistroSsidBssid:
+    def __init__(self):
+        self.mapa = {}  # ssid (str) -> set[bssid (bytes)]
+
+    def registrar(self, ssid, bssid):
+        if ssid not in self.mapa:
+            self.mapa[ssid] = set()
+        self.mapa[ssid].add(bssid)
+
+    def hay_duplicado(self, ssid, bssid):
+        # Retorna True si el SSID ya existia con un BSSID distinto
+        if ssid not in self.mapa:
+            return False
+        return bssid not in self.mapa[ssid] and len(self.mapa[ssid]) > 0
+\end{lstlisting}
+
+\subsection{Capturador de Frames: Diseño}
+
+El Capturador abstrae la fuente de paquetes (vivo o PCAP) presentando
+una interfaz uniforme:
+
+\begin{lstlisting}
+class Capturador:
+    def __init__(self, config):
+        self.config = config
+        self.callback = None
+
+    def registrar_callback(self, fn):
+        # fn recibe cada frame como argumento
+        self.callback = fn
+
+    def iniciar(self):
+        if self.config.iface:
+            # Modo en vivo
+            from scapy.all import sniff
+            sniff(iface=self.config.iface,
+                  prn=self.callback,
+                  store=False,
+                  monitor=True)
+        elif self.config.pcap_file:
+            # Modo offline
+            from scapy.all import sniff
+            sniff(offline=self.config.pcap_file, prn=self.callback)
+\end{lstlisting}
+
+\subsection{Despachador: Diseño}
+
+\begin{lstlisting}
+class Despachador:
+    def __init__(self, config, analizadores):
+        self.config = config
+        self.analiz_beacon = analizadores['beacon']
+        self.analiz_deauth = analizadores['deauth']
+        self.analiz_eviltwin = analizadores['eviltwin']
+
+    def procesar(self, frame):
+        # Filtro de canal: descartar si el frame no es del canal monitoreado
+        # (si el adaptador captura ruido de canales adyacentes)
+        if not self.es_del_canal(frame, self.config.canal):
+            return
+
+        # Identificar tipo y enrutar
+        if frame.haslayer(Dot11Beacon):
+            self.analiz_beacon.procesar(frame)
+            self.analiz_eviltwin.procesar(frame)
+        elif frame.haslayer(Dot11Deauth):
+            self.analiz_deauth.procesar(frame)
+        # Otros tipos se ignoran
+\end{lstlisting}
+
+\subsection{Analizador de Beacon Flooding}
+
+\textbf{Algoritmo:} mantiene una ventana de N segundos donde acumula
+beacons únicos (por BSSID). Si la cantidad de BSSIDs únicos vistos en la
+ventana supera el umbral configurado, emite alerta.
+
+\begin{lstlisting}
+class AnalizadorBeaconFlood:
+    def __init__(self, config, reporter):
+        self.config = config
+        self.reporter = reporter
+        self.ventana = VentanaTemporal(config.ventana_beacon_seg)
+        self.alerta_emitida_recientemente = False
+        self.ultimo_alerta = 0
+
+    def procesar(self, frame):
+        ahora = time.time()
+        bssid = frame.addr3  # bytes
+        ssid = frame.info.decode('utf-8', errors='replace')
+
+        # Registrar este beacon en la ventana
+        self.ventana.agregar(ahora, (bssid, ssid))
+
+        # Contar BSSIDs unicos en ventana
+        bssids_unicos = self.ventana.conteo_unicos(0)
+        tasa = bssids_unicos / self.config.ventana_beacon_seg
+
+        # Detectar si supera umbral, con cooldown anti-spam
+        if tasa > self.config.umbral_beacons_por_seg:
+            if ahora - self.ultimo_alerta > 5:  # cooldown 5s
+                self.reporter.alerta(
+                    severidad='ALERT',
+                    tipo='BEACON_FLOOD',
+                    mensaje=f"Tasa anomala de beacons: {tasa:.1f} BSSIDs unicos/s",
+                    detalles={'bssids_unicos': bssids_unicos,
+                              'ventana_seg': self.config.ventana_beacon_seg}
+                )
+                self.ultimo_alerta = ahora
+\end{lstlisting}
+
+\subsection{Analizador de Deauthentication}
+
+\begin{lstlisting}
+class AnalizadorDeauth:
+    def __init__(self, config, reporter):
+        self.config = config
+        self.reporter = reporter
+        self.ventana = VentanaTemporal(config.ventana_deauth_seg)
+        self.ultimo_alerta = 0
+
+    def procesar(self, frame):
+        ahora = time.time()
+        # Verificar si va dirigido al BSSID protegido
+        bssid_origen = frame.addr2  # source address
+        bssid_destino = frame.addr1  # destination
+        bssid_field = frame.addr3   # BSSID en frame
+
+        # Solo nos interesan deauths que involucran al BSSID protegido
+        if bssid_field != self.config.bssid_protegido:
+            return
+
+        self.ventana.agregar(ahora, (bssid_origen, bssid_destino))
+
+        conteo = self.ventana.conteo()
+        tasa = conteo / self.config.ventana_deauth_seg
+
+        if tasa > self.config.umbral_deauth_por_seg:
+            if ahora - self.ultimo_alerta > 5:
+                self.reporter.alerta(
+                    severidad='ALERT',
+                    tipo='DEAUTH',
+                    mensaje=f"Deauths anomalos contra BSSID protegido: {tasa:.1f}/s",
+                    detalles={'conteo': conteo,
+                              'ventana_seg': self.config.ventana_deauth_seg,
+                              'bssid_objetivo': formato_mac(bssid_field)}
+                )
+                self.ultimo_alerta = ahora
+\end{lstlisting}
+
+\subsection{Analizador de Evil Twin}
+
+\begin{lstlisting}
+class AnalizadorEvilTwin:
+    def __init__(self, config, reporter):
+        self.config = config
+        self.reporter = reporter
+        self.registro = RegistroSsidBssid()
+        self.alertas_emitidas = set()  # (ssid, bssid_intruso)
+
+    def procesar(self, frame):
+        bssid = frame.addr3
+        ssid = frame.info.decode('utf-8', errors='replace')
+
+        # Si el SSID es el protegido pero el BSSID no es el protegido
+        if ssid == self.config.ssid_protegido:
+            if bssid != self.config.bssid_protegido:
+                # Verificar lista blanca
+                if bssid in self.config.bssid_lista_blanca:
+                    return
+
+                # Detectar Evil Twin
+                clave_alerta = (ssid, bssid)
+                if clave_alerta not in self.alertas_emitidas:
+                    self.reporter.alerta(
+                        severidad='CRITICAL',
+                        tipo='EVIL_TWIN',
+                        mensaje=f"BSSID {formato_mac(bssid)} anuncia SSID protegido",
+                        detalles={
+                            'ssid': ssid,
+                            'bssid_intruso': formato_mac(bssid),
+                            'bssid_legitimo': formato_mac(self.config.bssid_protegido)
+                        }
+                    )
+                    self.alertas_emitidas.add(clave_alerta)
+
+        # Siempre registrar SSID-BSSID para futura referencia
+        self.registro.registrar(ssid, bssid)
+\end{lstlisting}
+
+\subsection{Correlador de Cadena}
+
+El Correlador recibe las alertas de los tres analizadores y mantiene una
+ventana temporal para detectar la cadena ofensiva completa.
+
+\begin{lstlisting}
+class CorreladorCadena:
+    def __init__(self, config, reporter):
+        self.config = config
+        self.reporter = reporter
+        self.alertas_recientes = {
+            'BEACON_FLOOD': None,
+            'DEAUTH': None,
+            'EVIL_TWIN': None
+        }
+        self.cadena_emitida = False
+
+    def registrar_alerta(self, tipo, timestamp):
+        # Llamado por el Reporter al emitir cada alerta
+        if tipo in self.alertas_recientes:
+            self.alertas_recientes[tipo] = timestamp
+            self.evaluar_cadena(timestamp)
+
+    def evaluar_cadena(self, ahora):
+        if self.cadena_emitida:
+            return  # ya emitida, no repetir
+
+        # Verificar si las tres alertas estan presentes y dentro de ventana
+        timestamps = list(self.alertas_recientes.values())
+        if any(t is None for t in timestamps):
+            return
+
+        ventana = self.config.ventana_correlacion_seg
+        if (ahora - min(timestamps)) > ventana:
+            return  # alguna alerta esta fuera de ventana
+
+        # Verificar orden esperado: Beacon Flood -> Deauth -> Evil Twin
+        t_beacon = self.alertas_recientes['BEACON_FLOOD']
+        t_deauth = self.alertas_recientes['DEAUTH']
+        t_eviltwin = self.alertas_recientes['EVIL_TWIN']
+
+        if t_beacon <= t_deauth <= t_eviltwin:
+            self.reporter.alerta(
+                severidad='CRITICAL',
+                tipo='CADENA_OFENSIVA',
+                mensaje="Cadena ofensiva WARDEN detectada (las 3 fases en secuencia)",
+                detalles={
+                    't_beacon_flood': t_beacon,
+                    't_deauth': t_deauth,
+                    't_evil_twin': t_eviltwin,
+                    'duracion_total_seg': t_eviltwin - t_beacon
+                }
+            )
+            self.cadena_emitida = True
+\end{lstlisting}
+
+\subsection{Reporter: Formato de Alertas}
+
+Todas las alertas siguen un formato uniforme y legible:
+
+\begin{lstlisting}
+[YYYY-MM-DDThh:mm:ss] [SEVERIDAD] TIPO_ATAQUE: mensaje
+    detalle_1: valor_1
+    detalle_2: valor_2
+    ...
+\end{lstlisting}
+
+\textbf{Ejemplos reales:}
+
+\begin{lstlisting}
+[2026-04-25T14:23:01] [ALERT] BEACON_FLOOD: Tasa anomala de beacons: 87.4 BSSIDs unicos/s
+    bssids_unicos: 437
+    ventana_seg: 5
+
+[2026-04-25T14:23:34] [ALERT] DEAUTH: Deauths anomalos contra BSSID protegido: 18.3/s
+    conteo: 55
+    ventana_seg: 3
+    bssid_objetivo: e4:ab:89:d6:9b:80
+
+[2026-04-25T14:24:02] [CRITICAL] EVIL_TWIN: BSSID aa:bb:cc:dd:ee:ff anuncia SSID protegido
+    ssid: LAB_WARDEN_UTP
+    bssid_intruso: aa:bb:cc:dd:ee:ff
+    bssid_legitimo: e4:ab:89:d6:9b:80
+
+[2026-04-25T14:24:03] [CRITICAL] CADENA_OFENSIVA: Cadena ofensiva WARDEN detectada (las 3 fases en secuencia)
+    t_beacon_flood: 2026-04-25T14:23:01
+    t_deauth: 2026-04-25T14:23:34
+    t_evil_twin: 2026-04-25T14:24:02
+    duracion_total_seg: 61.3
+\end{lstlisting}
+
+\subsection{Manejador de Sesión}
+
+\begin{lstlisting}
+class ManejadorSesion:
+    def __init__(self, config):
+        self.config = config
+        self.tiempo_inicio = None
+        self.contador_alertas = {
+            'BEACON_FLOOD': 0, 'DEAUTH': 0,
+            'EVIL_TWIN': 0, 'CADENA_OFENSIVA': 0
+        }
+        self.frames_procesados = 0
+        self.capturador = None
+
+    def iniciar(self):
+        # Validaciones previas
+        si self.config.iface:
+            verificar_modo_monitor(self.config.iface)
+        si self.config.pcap_file:
+            verificar_archivo_existe(self.config.pcap_file)
+
+        # Construir el pipeline
+        reporter = Reporter(self)
+        correlador = CorreladorCadena(self.config, reporter)
+        reporter.set_correlador(correlador)
+
+        analiz = {
+            'beacon': AnalizadorBeaconFlood(self.config, reporter),
+            'deauth': AnalizadorDeauth(self.config, reporter),
+            'eviltwin': AnalizadorEvilTwin(self.config, reporter)
+        }
+        despachador = Despachador(self.config, analiz)
+        self.capturador = Capturador(self.config)
+        self.capturador.registrar_callback(self.on_frame_wrap(despachador))
+
+        # Configurar manejador de SIGINT
+        signal.signal(signal.SIGINT, self.shutdown)
+
+        # Iniciar
+        self.tiempo_inicio = time.time()
+        log_info("WARDEN Detector iniciado.")
+        self.capturador.iniciar()  # bloqueante hasta SIGINT o EOF
+
+    def on_frame_wrap(self, despachador):
+        def wrapper(frame):
+            self.frames_procesados += 1
+            despachador.procesar(frame)
+        return wrapper
+
+    def registrar_alerta_emitida(self, tipo):
+        self.contador_alertas[tipo] += 1
+
+    def shutdown(self, signum, frame):
+        # Manejador de SIGINT
+        duracion = time.time() - self.tiempo_inicio
+        print("\n\n=== RESUMEN DE SESION WARDEN ===")
+        print(f"Duracion: {duracion:.1f} segundos")
+        print(f"Frames procesados: {self.frames_procesados}")
+        print(f"Alertas emitidas:")
+        for tipo, cuenta in self.contador_alertas.items():
+            print(f"  {tipo}: {cuenta}")
+        sys.exit(0)
+\end{lstlisting}
+
+\subsection{Argumentos de Línea de Comandos}
+
+El detector se invoca con la siguiente sintaxis:
+
+\begin{lstlisting}
+python3 detector.py [opciones]
+
+Opciones obligatorias (uno de los dos):
+  --iface <nombre>      Captura en vivo desde la interfaz indicada
+                        (debe estar en modo monitor)
+  --pcap <archivo>      Analiza un archivo PCAP previamente capturado
+
+Opciones de configuracion:
+  --bssid <MAC>         BSSID del router de laboratorio (obligatorio)
+  --ssid <NOMBRE>       SSID del router de laboratorio (obligatorio)
+  --channel <N>         Canal monitoreado (1-13, default 6)
+
+Opciones de umbrales (opcionales):
+  --umbral-beacons <N>  BSSIDs unicos por segundo para alertar (default 30)
+  --ventana-beacon <S>  Ventana en segundos (default 5)
+  --umbral-deauth <N>   Deauths por segundo para alertar (default 5)
+  --ventana-deauth <S>  Ventana en segundos (default 3)
+  --ventana-corr <S>    Ventana de correlacion para cadena (default 60)
+
+Opciones varias:
+  --whitelist <MAC,...> Lista de BSSIDs en blanco (separados por coma)
+  --help                Muestra esta ayuda
+\end{lstlisting}
+
+\textbf{Ejemplos de uso:}
+
+\begin{lstlisting}
+# Captura en vivo
+sudo python3 detector.py --iface panda0 --channel 6 \
+    --bssid e4:ab:89:d6:9b:80 --ssid LAB_WARDEN_UTP
+
+# Analisis offline de captura previamente generada
+python3 detector.py --pcap captures/chain-complete-sample.pcapng \
+    --bssid e4:ab:89:d6:9b:80 --ssid LAB_WARDEN_UTP
+
+# Captura con umbrales personalizados
+sudo python3 detector.py --iface panda0 --channel 6 \
+    --bssid e4:ab:89:d6:9b:80 --ssid LAB_WARDEN_UTP \
+    --umbral-beacons 50 --umbral-deauth 8
+\end{lstlisting}
+
+\subsection{Diseño del Servidor FastAPI del Panel del Defensor}
+
+El Panel del Defensor se sirve mediante un servidor FastAPI que integra
+el detector como componente interno. Esta sección especifica los
+endpoints HTTP, el protocolo WebSocket y la estructura del frontend.
+
+\subsubsection{Estructura del proyecto Python}
+
+\begin{lstlisting}
+detector/
++-- main.py                    (entry point CLI clasico)
++-- web/
+|   +-- __init__.py
+|   +-- server.py              (aplicacion FastAPI + lifecycle)
+|   +-- websocket_manager.py   (gestor de conexiones WS)
+|   +-- routes.py              (endpoints HTTP REST)
+|   +-- detector_runner.py     (hilo del detector, integracion)
+|   +-- static/
+|       +-- index.html         (entry point del frontend)
+|       +-- panel.js
+|       +-- styles.css
++-- capture/
++-- analyzers/
++-- correlator.py
++-- reporter.py                (modificado: emite a stdout y a callbacks)
++-- session.py                 (modificado: soporta callbacks de alerta)
++-- config.py
++-- requirements.txt
+\end{lstlisting}
+
+\subsubsection{Aplicación FastAPI: server.py}
+
+\begin{lstlisting}
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from .websocket_manager import WebSocketManager
+from .detector_runner import DetectorRunner
+from .routes import router as api_router
+
+app = FastAPI(title="WARDEN Panel del Defensor")
+
+# Estado compartido del servidor
+ws_manager = WebSocketManager()
+detector_runner = DetectorRunner(ws_manager)
+
+# Servir frontend estatico
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
+
+@app.get("/")
+async def root():
+    return FileResponse("web/static/index.html")
+
+# Endpoint WebSocket para alertas en vivo
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws_manager.connect(ws)
+    try:
+        while True:
+            # El frontend envia comandos (reset, etc.)
+            mensaje = await ws.receive_json()
+            await procesar_comando_ws(mensaje)
+    except WebSocketDisconnect:
+        ws_manager.disconnect(ws)
+
+# Endpoints REST
+app.include_router(api_router, prefix="/api")
+
+# Lifecycle: detener detector cuando el servidor cierra
+@app.on_event("shutdown")
+async def shutdown():
+    detector_runner.stop()
+\end{lstlisting}
+
+\subsubsection{Endpoints REST: routes.py}
+
+\begin{lstlisting}
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.get("/status")
+async def get_status():
+    return {
+        "detector_corriendo": detector_runner.is_running(),
+        "duracion_seg": detector_runner.duracion_actual(),
+        "alertas_totales": detector_runner.contadores_totales(),
+        "frames_procesados": detector_runner.frames_procesados()
+    }
+
+@router.post("/detector/start")
+async def start_detector(config: dict):
+    # config: { iface, channel, bssid_protegido, ssid_protegido, umbrales }
+    try:
+        detector_runner.start(config)
+        return { "ok": True }
+    except Exception as e:
+        return { "ok": False, "error": str(e) }
+
+@router.post("/detector/stop")
+async def stop_detector():
+    detector_runner.stop()
+    return { "ok": True }
+
+@router.post("/session/reset")
+async def reset_session():
+    detector_runner.reset_session()
+    await ws_manager.broadcast({ "tipo": "session_reset" })
+    return { "ok": True }
+\end{lstlisting}
+
+\subsubsection{Gestor de WebSockets: websocket_manager.py}
+
+\begin{lstlisting}
+class WebSocketManager:
+    def __init__(self):
+        self.conexiones: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.conexiones.append(ws)
+        # Enviar estado inicial al conectarse
+        await ws.send_json({
+            "tipo": "init",
+            "alertas_recientes": detector_runner.alertas_recientes(),
+            "estado": "conectado"
+        })
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self.conexiones:
+            self.conexiones.remove(ws)
+
+    async def broadcast(self, mensaje: dict):
+        # Envia mensaje a todos los clientes conectados
+        muertos = []
+        for ws in self.conexiones:
+            try:
+                await ws.send_json(mensaje)
+            except Exception:
+                muertos.append(ws)
+        for ws in muertos:
+            self.disconnect(ws)
+\end{lstlisting}
+
+\subsubsection{Hilo del detector: detector_runner.py}
+
+\begin{lstlisting}
+import threading
+import asyncio
+from queue import Queue
+
+class DetectorRunner:
+    def __init__(self, ws_manager):
+        self.ws_manager = ws_manager
+        self.detector_thread = None
+        self.cola_alertas = Queue()
+        self.contadores = {
+            "BEACON_FLOOD": 0, "DEAUTH": 0,
+            "EVIL_TWIN": 0, "CADENA_OFENSIVA": 0
+        }
+        self.frames = 0
+        self.tiempo_inicio = None
+
+    def start(self, config):
+        # Validar interfaz en modo monitor
+        verificar_modo_monitor(config["iface"])
+
+        # Crear sesion del detector configurada para emitir alertas
+        # tanto a stdout (Reporter) como a la cola (callback)
+        sesion = ManejadorSesion(config)
+        sesion.set_alert_callback(self._on_alert)
+
+        # Lanzar en hilo separado
+        self.detector_thread = threading.Thread(
+            target=sesion.iniciar,
+            daemon=True
+        )
+        self.tiempo_inicio = time.time()
+        self.detector_thread.start()
+
+        # Iniciar tarea asyncio que consume la cola
+        asyncio.create_task(self._consumir_cola())
+
+    def _on_alert(self, alerta):
+        # Llamado desde el hilo del detector
+        self.cola_alertas.put(alerta)
+        if alerta["tipo"] in self.contadores:
+            self.contadores[alerta["tipo"]] += 1
+
+    async def _consumir_cola(self):
+        # Tarea asyncio que reenvia alertas al WebSocket
+        while True:
+            if not self.cola_alertas.empty():
+                alerta = self.cola_alertas.get_nowait()
+                await self.ws_manager.broadcast({
+                    "tipo": "alerta",
+                    "datos": alerta
+                })
+            await asyncio.sleep(0.05)  # 20 Hz polling de la cola
+
+    def stop(self):
+        if self.detector_thread and self.detector_thread.is_alive():
+            # Mecanismo de detencion del detector
+            sesion.detener()
+            self.detector_thread.join(timeout=5)
+
+    def reset_session(self):
+        for k in self.contadores:
+            self.contadores[k] = 0
+        self.frames = 0
+        self.tiempo_inicio = time.time()
+\end{lstlisting}
+
+\subsubsection{Modificación del Reporter para soportar callbacks}
+
+El componente Reporter del detector se modifica ligeramente para emitir
+alertas tanto a stdout (comportamiento original) como a un callback
+opcional registrado por el ManejadorSesion:
+
+\begin{lstlisting}
+class Reporter:
+    def __init__(self, sesion):
+        self.sesion = sesion
+        self.alert_callback = None  # nuevo: opcional
+
+    def set_alert_callback(self, fn):
+        self.alert_callback = fn
+
+    def alerta(self, severidad, tipo, mensaje, detalles):
+        timestamp = datetime.now().isoformat()
+        alerta_obj = {
+            "timestamp": timestamp,
+            "severidad": severidad,
+            "tipo": tipo,
+            "mensaje": mensaje,
+            "detalles": detalles
+        }
+
+        # Emitir a stdout (comportamiento original, RF-DEF-008)
+        self._imprimir_consola(alerta_obj)
+
+        # Notificar al sesion para correlador y contadores
+        self.sesion.registrar_alerta_emitida(tipo)
+
+        # Si hay callback (modo Panel), invocarlo
+        if self.alert_callback:
+            self.alert_callback(alerta_obj)
+\end{lstlisting}
+
+\subsubsection{Protocolo WebSocket: mensajes}
+
+Los mensajes que viajan por el WebSocket entre frontend y backend siguen
+este esquema:
+
+\textbf{Backend hacia frontend:}
+
+\begin{lstlisting}
+// Mensaje de inicio (al conectarse)
+{
+  "tipo": "init",
+  "alertas_recientes": [...],
+  "estado": "conectado"
+}
+
+// Alerta nueva
+{
+  "tipo": "alerta",
+  "datos": {
+    "timestamp": "2026-04-25T14:23:01",
+    "severidad": "ALERT",
+    "tipo": "BEACON_FLOOD",
+    "mensaje": "Tasa anomala de beacons: 87.4 BSSIDs unicos/s",
+    "detalles": { "bssids_unicos": 437, "ventana_seg": 5 }
+  }
+}
+
+// Reset de sesion (despues de POST /api/session/reset)
+{
+  "tipo": "session_reset"
+}
+
+// Cambio de estado del detector
+{
+  "tipo": "detector_status",
+  "estado": "corriendo" | "detenido" | "error",
+  "mensaje": "..."
+}
+\end{lstlisting}
+
+\textbf{Frontend hacia backend:}
+
+\begin{lstlisting}
+// Solicitar estado actual
+{ "comando": "status" }
+
+// Mantener heartbeat (keep-alive)
+{ "comando": "ping" }
+\end{lstlisting}
+
+\subsubsection{Frontend: estructura HTML}
+
+El frontend del Panel del Defensor es una página estática servida por
+FastAPI. Estructura mínima:
+
+\begin{lstlisting}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>WARDEN - Panel del Defensor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <header class="bg-gray-900 text-white p-4">
+    <h1 class="text-2xl font-bold">WARDEN - Panel del Defensor</h1>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4 grid grid-cols-3 gap-4">
+
+    <!-- Indicador visual de amenaza -->
+    <section class="col-span-3 bg-white rounded shadow p-6 text-center">
+      <div id="threat-indicator" class="w-32 h-32 rounded-full mx-auto bg-green-500"></div>
+      <p id="threat-label" class="mt-2 text-xl font-semibold">SIN AMENAZAS</p>
+    </section>
+
+    <!-- Contadores agregados -->
+    <section class="col-span-3 bg-white rounded shadow p-4 grid grid-cols-4 gap-2">
+      <div class="text-center">
+        <p class="text-3xl" id="cnt-beacon">0</p>
+        <p class="text-sm text-gray-600">Beacon Flood</p>
+      </div>
+      <div class="text-center">
+        <p class="text-3xl" id="cnt-deauth">0</p>
+        <p class="text-sm text-gray-600">Deauthentication</p>
+      </div>
+      <div class="text-center">
+        <p class="text-3xl" id="cnt-eviltwin">0</p>
+        <p class="text-sm text-gray-600">Evil Twin</p>
+      </div>
+      <div class="text-center">
+        <p class="text-3xl text-red-600" id="cnt-cadena">0</p>
+        <p class="text-sm text-gray-600">Cadena Ofensiva</p>
+      </div>
+    </section>
+
+    <!-- Lista de alertas -->
+    <section class="col-span-3 bg-white rounded shadow p-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold">Alertas en tiempo real</h2>
+        <button onclick="resetSession()" class="bg-gray-200 hover:bg-gray-300 px-4 py-1 rounded">
+          Reiniciar sesion
+        </button>
+      </div>
+      <ul id="alertas-list" class="mt-3 space-y-2 max-h-96 overflow-y-auto">
+        <!-- Las alertas se insertan aqui dinamicamente -->
+      </ul>
+    </section>
+
+  </main>
+
+  <script src="/static/panel.js"></script>
+</body>
+</html>
+\end{lstlisting}
+
+\subsubsection{Frontend: lógica JavaScript (panel.js)}
+
+\begin{lstlisting}
+// Conexion WebSocket
+const ws = new WebSocket("ws://" + location.host + "/ws");
+
+ws.onopen = () => console.log("Conectado al backend");
+ws.onclose = () => {
+  console.log("Conexion perdida, reintentando...");
+  setTimeout(() => location.reload(), 3000);
+};
+
+ws.onmessage = (evt) => {
+  const msg = JSON.parse(evt.data);
+  switch (msg.tipo) {
+    case "init":
+      cargarAlertasIniciales(msg.alertas_recientes);
+      break;
+    case "alerta":
+      agregarAlerta(msg.datos);
+      actualizarContador(msg.datos.tipo);
+      actualizarIndicador();
+      break;
+    case "session_reset":
+      limpiarVista();
+      break;
+  }
+};
+
+function agregarAlerta(alerta) {
+  const li = document.createElement("li");
+  const colorClass = severidadAColor(alerta.severidad);
+  li.className = "p-3 rounded border-l-4 " + colorClass;
+  li.innerHTML = `
+    <div class="flex justify-between">
+      <span class="font-semibold">${alerta.tipo}</span>
+      <span class="text-sm text-gray-500">${alerta.timestamp}</span>
+    </div>
+    <p class="mt-1">${alerta.mensaje}</p>
+  `;
+  // Insertar al tope (mas reciente primero)
+  document.getElementById("alertas-list").prepend(li);
+}
+
+function actualizarIndicador() {
+  const cnt = window.contadores;
+  const indicator = document.getElementById("threat-indicator");
+  const label = document.getElementById("threat-label");
+
+  if (cnt.CADENA_OFENSIVA > 0) {
+    indicator.className = "w-32 h-32 rounded-full mx-auto bg-red-600 animate-pulse";
+    label.textContent = "CADENA OFENSIVA DETECTADA";
+  } else if (cnt.BEACON_FLOOD + cnt.DEAUTH + cnt.EVIL_TWIN > 0) {
+    indicator.className = "w-32 h-32 rounded-full mx-auto bg-yellow-500";
+    label.textContent = "AMENAZA DETECTADA";
+  } else {
+    indicator.className = "w-32 h-32 rounded-full mx-auto bg-green-500";
+    label.textContent = "SIN AMENAZAS";
+  }
+}
+
+async function resetSession() {
+  if (!confirm("Limpiar todas las alertas? El detector seguira corriendo.")) return;
+  await fetch("/api/session/reset", { method: "POST" });
+}
+\end{lstlisting}
+
+% ==============================================================================
+\section{Diagramas de Secuencia de Flujos Críticos}
+% ==============================================================================
+
+\subsection{Flujo: Inicio de cadena automática}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Operador      Interfaz      Controlador   Modulo       Modulo      Modulo
+Atacante      Serial        Cadena        Beacon       Deauth      EvilTwin
+   |             |              |             |            |            |
+   | ``start''     |              |             |            |            |
+   |------------>|              |             |            |            |
+   |             | iniciar()    |             |            |            |
+   |             |------------->|             |            |            |
+   |             |              |             |            |            |
+   |             |              | iniciar_BF()|            |            |
+   |             |              |------------>|            |            |
+   |             |              |             |            |            |
+   |             |              |  (30 seg)   |            |            |
+   |             |              |             |            |            |
+   |             |              |    fin_BF   |            |            |
+   |             |              |<------------|            |            |
+   |             |              |             |            |            |
+   |             |              | iniciar_DA()|            |            |
+   |             |              |--------------------------->|          |
+   |             |              |             |            |            |
+   |             |              |             |  (15 seg)  |            |
+   |             |              |             |            |            |
+   |             |              |    fin_DA   |            |            |
+   |             |              |<---------------------------|          |
+   |             |              |             |            |            |
+   |             |              | iniciar_ET()|            |            |
+   |             |              |---------------------------------------->|
+   |             |              |             |            |            |
+   |             |              |             |            | (120 seg)  |
+   |             |              |             |            |            |
+   |             |              |    fin_ET   |            |            |
+   |             |              |<----------------------------------------|
+   |             |              |             |            |            |
+   |             |   resumen    |             |            |            |
+   |             |<-------------|             |            |            |
+   |  resumen    |              |             |            |            |
+   |<------------|              |             |            |            |
+\end{verbatim}
+
+\subsection{Flujo: Procesamiento de un frame en el detector}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Scapy        Capturador    Despachador   Analizadores   Correlador   Reporter
+  |              |              |              |              |          |
+  | frame        |              |              |              |          |
+  |------------->|              |              |              |          |
+  |              | callback(f)  |              |              |          |
+  |              |------------->|              |              |          |
+  |              |              | filtro_canal |              |          |
+  |              |              | tipo_frame   |              |          |
+  |              |              |              |              |          |
+  |              |              |  procesar(f) |              |          |
+  |              |              |------------->|              |          |
+  |              |              |              | analiza      |          |
+  |              |              |              | ventanas     |          |
+  |              |              |              |              |          |
+  |              |              |              | si firma:    |          |
+  |              |              |              |   alerta(..)>|          |
+  |              |              |              |              | imprimir |
+  |              |              |              |              |--------->|
+  |              |              |              |              |          |
+  |              |              |              |              | reg_alert|
+  |              |              |              |              |<---------|
+  |              |              |              |              | evaluar  |
+  |              |              |              |              | cadena   |
+  |              |              |              |              |          |
+  |              |              |              |              | si 3 fases|
+  |              |              |              |              | en orden:|
+  |              |              |              |              | alerta()>|
+  |              |              |              |              |          |
+\end{verbatim}
+
+\subsection{Flujo: Captura de credenciales en el portal cautivo}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Victima      Modulo        Servidor     Portal       Buffer
+(navegador)  EvilTwin      DNS          HTTP         Credenciales
+   |             |             |            |             |
+   | DNS query   |             |            |             |
+   | google.com  |             |            |             |
+   |------------>|             |            |             |
+   |             | resolver()  |            |             |
+   |             |------------>|            |             |
+   |             | 10.0.0.1    |            |             |
+   |             |<------------|            |             |
+   | DNS reply   |             |            |             |
+   |<------------|             |            |             |
+   |                                                       |
+   | GET / HTTP/1.1                                        |
+   | (a 10.0.0.1)                                          |
+   |---------------------------------------->|             |
+   |                                          | servir HTML |
+   |                                          | portal.html |
+   |<----------------------------------------|             |
+   | (renderiza pagina)                                    |
+   | usuario llena formulario                              |
+   |                                                       |
+   | POST /captura                                         |
+   | usuario=demo.user@warden.test                         |
+   | password=demo-password-12345                          |
+   |---------------------------------------->|             |
+   |                                          | parsear     |
+   |                                          | construir   |
+   |                                          | CredCapt    |
+   |                                          |------------>|
+   |                                          |             | almacenar
+   |                                          |             | en buffer
+   |                                          | log serial  |
+   |                                          | imprimir    |
+   |                                          | en consola  |
+   |                                          |             |
+   |                                          | servir HTML |
+   |                                          | de exito    |
+   |<----------------------------------------|             |
+\end{verbatim}
+
+\subsection{Flujo: Manejo de SIGINT en el detector}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Operador      Sistema      Manejador    Capturador    Reporter    Consola
+Detector      Operativo    Sesion
+   |             |             |             |             |          |
+   | Ctrl+C      |             |             |             |          |
+   |------------>|             |             |             |          |
+   |             | SIGINT      |             |             |          |
+   |             |------------>|             |             |          |
+   |             |             | shutdown()  |             |          |
+   |             |             |             |             |          |
+   |             |             | detener()   |             |          |
+   |             |             |------------>|             |          |
+   |             |             |     ok      |             |          |
+   |             |             |<------------|             |          |
+   |             |             |             |             |          |
+   |             |             | resumen()   |             |          |
+   |             |             |---------------------------> |        |
+   |             |             |             |             | imprimir |
+   |             |             |             |             |--------->|
+   |             |             |             |             |          |
+   |             |             | sys.exit(0) |             |          |
+   |             |<------------|             |             |          |
+   | <prompt>    |             |             |             |          |
+   |<------------|             |             |             |          |
+\end{verbatim}
+
+\subsection{Flujo: Lanzamiento de ataque desde el Panel del Atacante}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Operador     Panel        ESP32         Validador    Controlador  Modulos
+Atacante     (browser)    (API REST)    Etico        Cadena       de ataque
+   |             |              |             |             |          |
+   |  click      |              |             |             |          |
+   | "Lanzar"    |              |             |             |          |
+   |------------>|              |             |             |          |
+   |             | POST /config |             |             |          |
+   |             | {bssid,mac}  |             |             |          |
+   |             |------------->|             |             |          |
+   |             |              | validar()   |             |          |
+   |             |              |------------>|             |          |
+   |             |              |    OK       |             |          |
+   |             |              |<------------|             |          |
+   |             |   200 OK     |             |             |          |
+   |             |<-------------|             |             |          |
+   |             |              |             |             |          |
+   |             | POST /attack/start         |             |          |
+   |             | {modo:cadena}              |             |          |
+   |             |------------->|             |             |          |
+   |             |              | iniciar()   |             |          |
+   |             |              |---------------------------> |        |
+   |             |              |             |             |          |
+   |             |              |             |             | iniciar  |
+   |             |              |             |             | beacon() |
+   |             |              |             |             |--------->|
+   |             |   200 OK     |             |             |          |
+   |             |<-------------|             |             |          |
+   |             |              |             |             |          |
+   |             | (transita a vista de monitoreo)          |          |
+   |             |              |             |             |          |
+   |             | GET /status  |             |             |          |
+   |             | (cada 1s)    |             |             |          |
+   |             |------------->|             |             |          |
+   |             |   estado JSON|             |             |          |
+   |             |<-------------|             |             |          |
+   |             |              |             |             |          |
+   |             | (refresca contadores en pantalla)        |          |
+   |             |              |             |             |          |
+\end{verbatim}
+
+\subsection{Flujo: Alerta del detector hacia el Panel del Defensor}
+
+\vspace{0.3cm}
+\begin{verbatim}
+Capturador   Despachador  Analizador   Reporter   WebSocket   Frontend
+Frames                    (X)                     Manager    (browser)
+   |              |             |            |          |          |
+   | frame        |             |            |          |          |
+   |------------->|             |            |          |          |
+   |              | enrutar     |            |          |          |
+   |              |------------>|            |          |          |
+   |              |             | si firma:  |          |          |
+   |              |             | construir  |          |          |
+   |              |             | alerta     |          |          |
+   |              |             |            |          |          |
+   |              |             | alerta(..) |          |          |
+   |              |             |----------->|          |          |
+   |              |             |            | imprimir |          |
+   |              |             |            | a stdout |          |
+   |              |             |            |          |          |
+   |              |             |            | callback |          |
+   |              |             |            | (cola)   |          |
+   |              |             |            |--------->|          |
+   |              |             |            |          | broadcast|
+   |              |             |            |          | a todos  |
+   |              |             |            |          | clientes |
+   |              |             |            |          |--------->|
+   |              |             |            |          |          | render
+   |              |             |            |          |          | alerta
+   |              |             |            |          |          | en lista
+   |              |             |            |          |          |
+   |              |             |            |          |          | actualizar
+   |              |             |            |          |          | indicador
+   |              |             |            |          |          | (verde->
+   |              |             |            |          |          |  amarillo)
+\end{verbatim}
+
+% ==============================================================================
+\section{Consideraciones de Implementación}
+% ==============================================================================
+
+\subsection{Consideraciones generales}
+
+\begin{itemize}
+  \item \textbf{Manejo de errores:} cada operación que pueda fallar
+    (apertura de interfaz, lectura de archivo, parseo de frame) debe
+    estar protegida con manejo de excepciones. Errores no críticos se
+    logan y la ejecución continúa; errores críticos terminan
+    ordenadamente con código de salida no cero.
+  \item \textbf{Logging:} todos los componentes utilizan el módulo
+    \texttt{logging} de Python con niveles apropiados (DEBUG, INFO,
+    WARNING, ERROR). El nivel por defecto es INFO; se puede ajustar por
+    argumento.
+  \item \textbf{Tipos:} en Python se utilizan type hints en todas las
+    firmas de funciones para facilitar la lectura y permitir
+    verificación con \texttt{mypy} si se requiere.
+\end{itemize}
+
+\subsection{Subsistema ofensivo (ESP32)}
+
+\begin{itemize}
+  \item \textbf{Concurrencia:} el firmware utiliza FreeRTOS por debajo de
+    Arduino-ESP32. Las tareas se crean con \texttt{xTaskCreate()} con
+    prioridades cuidadosamente asignadas para no bloquear el WiFi.
+  \item \textbf{Watchdog:} el watchdog del ESP32 debe ser servido
+    regularmente en cualquier loop largo. Considerar
+    \texttt{esp\_task\_wdt\_reset()} en bucles que excedan 1 segundo sin
+    \texttt{delay()}.
+  \item \textbf{Memoria:} la ESP32 tiene aproximadamente 320 KB de RAM
+    útil. El buffer de credenciales y el HTML embebido del portal cabin
+    sin problema.
+  \item \textbf{Inyección de frames:} la inyección de frames 802.11 de
+    gestión arbitrarios no es soportada por el SDK oficial de Espressif.
+    Se requiere usar \texttt{esp\_wifi\_80211\_tx()} (función no
+    documentada pero disponible) o bibliotecas de la comunidad como
+    \texttt{esp32-wifi-penetration-tool}.
+\end{itemize}
+
+\subsection{Subsistema defensivo (Python)}
+
+\begin{itemize}
+  \item \textbf{Permisos:} la captura en vivo requiere
+    \texttt{CAP\_NET\_RAW} y \texttt{CAP\_NET\_ADMIN}. Se ejecuta con
+    \texttt{sudo} o se otorgan capabilities al binario de Python con
+    \texttt{setcap}.
+  \item \textbf{Rendimiento:} Scapy puede tener cuellos de botella ante
+    altas tasas de frames. Para condiciones extremas (más de 1000
+    frames/segundo), considerar el uso de \texttt{tcpdump} para captura
+    a archivo y procesamiento offline en bloques.
+  \item \textbf{Compatibilidad de Scapy con 802.11:} verificar que el
+    formato de captura incluye el encabezado RadioTap. Algunas
+    distribuciones requieren configuración adicional del adaptador para
+    incluirlo.
+  \item \textbf{Falsos positivos en redes complejas:} en entornos con
+    múltiples APs legítimos compartiendo SSID (redes empresariales con
+    roaming), la lista blanca de BSSIDs (RF-DEF-015) es esencial.
+\end{itemize}
+
+% ==============================================================================
+\section{Trazabilidad: Diseño a Casos de Uso}
+% ==============================================================================
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Componente de Diseño & Casos de Uso Implementados}
+\drow{Controlador de Cadena (off)   & UC-01, UC-05, UC-16, UC-17}
+\drow{Módulo Beacon Flood (off)     & UC-02 (y UC-01 fase 1, UC-16 fase 1)}
+\drow{Módulo Deauth (off)           & UC-03 (y UC-01 fase 2, UC-16 fase 2)}
+\drow{Módulo Evil Twin (off)        & UC-04 (y UC-01 fase 3, UC-16 fase 3)}
+\drow{Portal Cautivo (off)          & UC-04, UC-11, UC-17 (visualización de credenciales)}
+\drow{Validador Ético (off)         & UC-06, UC-15, UC-16}
+\drow{Interfaz Serial (off)         & UC-01 a UC-06 (mecanismo secundario de control)}
+\drow{AP de Control (off)           & UC-13 a UC-17 (puerta de entrada al panel)}
+\drow{Servidor API REST (off)       & UC-13 a UC-17}
+\drow{Reconocedor (off)             & UC-13 (\texttt{/scan}), UC-14 (\texttt{/clients})}
+\drow{Lookup OUI (off)              & UC-14 (\texttt{/oui-lookup})}
+\drow{Frontend Panel del Atacante   & UC-13 a UC-17}
+\drow{Capturador de Frames (def)    & UC-07, UC-08}
+\drow{Despachador (def)             & UC-07, UC-08}
+\drow{Analizador Beacon Flood (def) & UC-07, UC-08, UC-09, UC-19}
+\drow{Analizador Deauth (def)       & UC-07, UC-08, UC-09, UC-19}
+\drow{Analizador Evil Twin (def)    & UC-07, UC-08, UC-09, UC-19}
+\drow{Correlador de Cadena (def)    & UC-09, UC-19 (alerta agregada)}
+\drow{Reporter (def)                & UC-09, UC-19 (callback hacia WebSocket)}
+\drow{Manejador de Sesión (def)     & UC-07, UC-08, UC-10}
+\drow{Servidor FastAPI (def)        & UC-18, UC-19, UC-20}
+\drow{WebSocket Manager (def)       & UC-19 (alertas tiempo real), UC-20 (broadcast reset)}
+\drow{Detector Runner (def)         & UC-18, UC-20}
+\drow{Frontend Panel del Defensor   & UC-18, UC-19, UC-20}
+\drow{Demostración integrada        & UC-12}
+\end{datatable}
+
+\end{document}

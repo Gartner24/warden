@@ -1,0 +1,503 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Especificación de Requerimientos de Software}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento especifica los requerimientos funcionales y no funcionales del
+sistema WARDEN (Wireless Attack Reproduction and Detection Environment). Su
+finalidad es definir, de forma precisa y verificable, qué debe hacer el
+sistema y bajo qué características de calidad debe operar.
+
+Este documento se deriva directamente del Documento de Visión y sirve como
+insumo para los documentos posteriores de Casos de Uso, Arquitectura y
+Diseño Detallado. Cada requerimiento aquí especificado está trazado al
+objetivo de alto nivel del que se origina.
+
+\subsection{Audiencia}
+Este documento está dirigido a:
+
+\begin{itemize}
+  \item Los integrantes del equipo de desarrollo, como referencia
+    autoritativa de qué debe construirse.
+  \item El profesor evaluador, como criterio formal de evaluación de la
+    completitud del sistema.
+  \item Cualquier persona que requiera evaluar si el sistema cumple lo
+    prometido.
+\end{itemize}
+
+\subsection{Alcance}
+El documento cubre los requerimientos de los dos subsistemas que componen
+WARDEN, así como los requerimientos del sistema completo:
+
+\begin{itemize}
+  \item \textbf{Subsistema Ofensivo:} firmware ESP32 que ejecuta la cadena
+    de tres ataques encadenados, incluyendo el portal cautivo falso.
+  \item \textbf{Subsistema Defensivo:} software detector en Python con
+    Scapy que analiza tráfico 802.11 capturado por el adaptador Panda
+    Wireless PAU0B AC600 en modo monitor.
+  \item \textbf{Sistema Completo:} requerimientos transversales de
+    integración, documentación y demostración.
+\end{itemize}
+
+Este documento \textbf{no} cubre el detalle de cómo cada requerimiento se
+implementa internamente. Eso está en los documentos de Arquitectura y
+Diseño.
+
+\subsection{Definiciones y Acrónimos}
+Los términos técnicos utilizados en este documento están definidos en el
+documento WARDEN \emph{Fundamentos Técnicos} y en el Documento de Visión.
+Adicionalmente, este documento utiliza la siguiente terminología propia
+de la especificación de requerimientos:
+
+\begin{datatable}{L{3cm} L{12.3cm}}{Término & Definición}
+\drow{Requerimiento Funcional (RF) & Capacidad o función específica que el sistema debe proveer. Describe \emph{qué hace} el sistema.}
+\drow{Requerimiento No Funcional (RNF) & Restricción o cualidad sobre cómo debe operar el sistema (rendimiento, usabilidad, mantenibilidad, etc.). Describe \emph{cómo lo hace}.}
+\drow{Trazabilidad & Capacidad de seguir el origen de un requerimiento hasta el objetivo de alto nivel del que se deriva, y viceversa.}
+\drow{DEBE / DEBERÍA / PUEDE & Verbos que indican el nivel de obligatoriedad del requerimiento, siguiendo la convención de RFC 2119.}
+\end{datatable}
+
+\subsection{Convención de Identificadores}
+Cada requerimiento tiene un identificador único con la siguiente estructura:
+
+\begin{verbatim}
+[TIPO]-[SUBSISTEMA]-[NUMERO]
+\end{verbatim}
+
+Donde:
+
+\begin{itemize}
+  \item \textbf{TIPO:} \texttt{RF} (Funcional) o \texttt{RNF} (No
+    Funcional).
+  \item \textbf{SUBSISTEMA:} \texttt{OFF} (Ofensivo), \texttt{DEF}
+    (Defensivo), o \texttt{SYS} (Sistema completo).
+  \item \textbf{NUMERO:} secuencia de tres dígitos.
+\end{itemize}
+
+Ejemplos: \texttt{RF-OFF-001}, \texttt{RF-DEF-005}, \texttt{RNF-SYS-002}.
+
+\subsection{Niveles de Prioridad}
+Cada requerimiento tiene una prioridad asignada que indica su importancia
+relativa para el éxito del proyecto:
+
+\begin{datatable}{L{2cm} L{13.3cm}}{Prioridad & Significado}
+\drow{Alta   & Requerimiento crítico. Su ausencia impide la entrega del proyecto. Debe estar implementado y verificado para considerar el sistema completo.}
+\drow{Media  & Requerimiento importante pero no crítico. Su ausencia degrada la calidad del sistema pero no impide la entrega.}
+\drow{Baja   & Requerimiento deseable. Su ausencia no afecta la entrega; su presencia mejora la calidad o utilidad del sistema.}
+\end{datatable}
+
+\subsection{Referencias}
+\begin{itemize}
+  \item Documento WARDEN \emph{Documento de Visión}.
+  \item Documento WARDEN \emph{Threat Model y Cadena de Ataque}.
+  \item Documento WARDEN \emph{Fundamentos Técnicos}.
+  \item IEEE Std 830-1998. Recommended Practice for Software Requirements
+    Specifications.
+  \item RFC 2119. Key Words for Use in RFCs to Indicate Requirement
+    Levels.
+\end{itemize}
+
+% ==============================================================================
+\section{Descripción General}
+% ==============================================================================
+
+\subsection{Perspectiva del Producto}
+WARDEN es un sistema autocontenido compuesto por dos subsistemas
+funcionalmente independientes que se comunican exclusivamente a través
+del medio inalámbrico (radiofrecuencia 2.4 GHz). No tiene dependencias
+externas de tiempo real (no requiere internet, servicios cloud,
+servidores de licencia, ni APIs externas).
+
+El sistema se opera mediante interfaces de línea de comandos y, en el
+caso del portal cautivo, una página web mínima. No existe interfaz
+gráfica de usuario.
+
+\subsection{Funciones del Sistema}
+A alto nivel, las funciones que el sistema realiza son:
+
+\begin{enumerate}
+  \item \textbf{Generación de ataques.} El subsistema ofensivo ejecuta
+    una cadena de tres ataques contra dispositivos víctima del laboratorio:
+    Beacon Flooding, Deauthentication, y Evil Twin con portal cautivo
+    falso.
+  \item \textbf{Captura de credenciales.} El portal cautivo del Evil Twin
+    registra credenciales ficticias ingresadas durante demostraciones.
+  \item \textbf{Captura pasiva del medio.} El subsistema defensivo
+    captura todos los frames 802.11 transmitidos en el canal del
+    laboratorio.
+  \item \textbf{Detección de cada fase del ataque.} El subsistema
+    defensivo identifica las firmas de las tres fases ofensivas y las
+    reporta como alertas.
+  \item \textbf{Correlación de cadena de ataque.} El subsistema defensivo
+    identifica cuando las tres fases ocurren en secuencia temporal y
+    emite una alerta agregada.
+  \item \textbf{Reporte de eventos.} El subsistema defensivo emite los
+    resultados por consola con formato legible.
+\end{enumerate}
+
+\subsection{Características de los Usuarios}
+El sistema tiene cuatro roles de usuario, definidos en el Documento de
+Visión:
+
+\begin{itemize}
+  \item \textbf{Operador del Atacante:} controla la ESP32 e inicia la
+    cadena ofensiva o sus fases individuales.
+  \item \textbf{Operador del Detector:} ejecuta el software detector y
+    monitorea las alertas.
+  \item \textbf{Operador de la Víctima:} interactúa con los dispositivos
+    víctima durante la demostración (ingresa credenciales ficticias en
+    el portal cautivo).
+  \item \textbf{Observador:} estudia el sistema sin interactuar
+    directamente.
+\end{itemize}
+
+Todos los roles asumen conocimiento básico de operación de Linux por
+línea de comandos. Los usuarios objetivo del sistema son estudiantes y
+profesionales en formación técnica.
+
+\subsection{Restricciones Generales}
+Aplican las restricciones definidas en el Documento de Visión:
+
+\begin{itemize}
+  \item Operación exclusiva en banda 2.4 GHz.
+  \item Subsistema defensivo opera bajo Linux.
+  \item Subsistema defensivo es estrictamente pasivo.
+  \item Ataques se dirigen exclusivamente a equipos del equipo de
+    desarrollo.
+  \item Cumplimiento estricto del ambiente controlado (Ley 1273 de 2009).
+\end{itemize}
+
+\subsection{Suposiciones y Dependencias}
+Aplican las suposiciones y dependencias definidas en el Documento de
+Visión, sección de Suposiciones y Dependencias.
+
+% ==============================================================================
+\section{Requerimientos Funcionales del Subsistema Ofensivo}
+% ==============================================================================
+
+\begin{frtable}
+\frrow{RF-OFF-001}{Inicio de cadena automática}{El firmware DEBE proveer un mecanismo de activación (botón físico o comando serial) que inicie la ejecución secuencial automática de las tres fases de la cadena ofensiva.}{Alta}{Atacante}
+\frrow{RF-OFF-002}{Ejecución manual por fase}{El firmware DEBE permitir la ejecución individual de cada fase (Beacon Flooding, Deauthentication, Evil Twin) de forma independiente, mediante selección por consola serial.}{Alta}{Atacante}
+\frrow{RF-OFF-003}{Beacon Flooding}{El firmware DEBE emitir al menos 50 beacons únicos por segundo durante la fase de Beacon Flooding, con SSIDs y BSSIDs falsificados generados aleatoriamente o desde una lista predefinida.}{Alta}{Atacante}
+\frrow{RF-OFF-004}{Beacon Flooding en canal específico}{El firmware DEBE permitir configurar el canal en el que se emiten los beacons falsos, por defecto el canal del router de laboratorio.}{Alta}{Atacante}
+\frrow{RF-OFF-005}{Deauthentication dirigida}{El firmware DEBE emitir frames de deautenticación 802.11 dirigidos al BSSID del router de laboratorio, suplantando como dirección de origen al propio BSSID legítimo.}{Alta}{Atacante}
+\frrow{RF-OFF-006}{Configuración del BSSID objetivo}{El firmware DEBE permitir configurar el BSSID del router de laboratorio antes de la ejecución, sin necesidad de recompilar.}{Alta}{Atacante}
+\frrow{RF-OFF-007}{Evil Twin: AP falso}{El firmware DEBE crear un Access Point con SSID idéntico al del router de laboratorio y configurado como red abierta (sin contraseña).}{Alta}{Atacante}
+\frrow{RF-OFF-008}{Evil Twin: servidor DHCP}{El firmware DEBE proveer un servidor DHCP que asigne direcciones IP a los clientes que se conecten al Evil Twin.}{Alta}{Atacante}
+\frrow{RF-OFF-009}{Evil Twin: servidor DNS}{El firmware DEBE proveer un servidor DNS que resuelva todas las consultas a la dirección IP del propio AP, redirigiendo así todo el tráfico web al portal cautivo.}{Alta}{Atacante}
+\frrow{RF-OFF-010}{Evil Twin: portal cautivo}{El firmware DEBE servir una página web que solicite credenciales (usuario y contraseña) a los clientes conectados al Evil Twin.}{Alta}{Atacante}
+\frrow{RF-OFF-011}{Identificación visible del portal}{La página web del portal cautivo DEBE incluir una marca visible que la identifique como componente de demostración educativa de WARDEN.}{Alta}{Atacante}
+\frrow{RF-OFF-012}{Captura de credenciales}{El firmware DEBE registrar las credenciales recibidas a través del portal cautivo, junto con la dirección IP del cliente y la marca de tiempo, y emitirlas por consola serial.}{Alta}{Atacante}
+\frrow{RF-OFF-013}{Detención de la cadena}{El firmware DEBE proveer un mecanismo (botón físico o comando serial) para detener inmediatamente cualquier fase en curso.}{Alta}{Atacante}
+\frrow{RF-OFF-014}{Estado por consola serial}{El firmware DEBE emitir por consola serial mensajes de estado al iniciar cada fase, al detectar conexiones de víctimas, y al completar cada fase.}{Media}{Atacante}
+\frrow{RF-OFF-015}{Configuración de duración por fase}{El firmware DEBERÍA permitir configurar la duración de cada fase en la modalidad automática.}{Media}{Atacante}
+\frrow{RF-OFF-016}{Modo control: red WiFi de gestión}{El firmware DEBE levantar una red WiFi propia denominada \texttt{WARDEN\_CONTROL} en una IP fija conocida (\texttt{192.168.4.1}) cuando no esté ejecutando un ataque, para que el Operador del Atacante se conecte y consuma la API REST.}{Alta}{Atacante}
+\frrow{RF-OFF-017}{API REST: endpoint de escaneo}{El firmware DEBE exponer un endpoint HTTP \texttt{GET /scan} que escanee redes WiFi 2.4 GHz cercanas y retorne en formato JSON la lista de SSID, BSSID, canal, RSSI y tipo de cifrado de cada red encontrada.}{Alta}{Atacante}
+\frrow{RF-OFF-018}{API REST: endpoint de clientes}{El firmware DEBE exponer un endpoint HTTP \texttt{GET /clients} que, dado un BSSID objetivo, retorne en formato JSON la lista de direcciones MAC detectadas como clientes asociados a esa red durante un período de captura pasiva.}{Alta}{Atacante}
+\frrow{RF-OFF-019}{API REST: lookup OUI}{El firmware DEBE exponer un endpoint HTTP \texttt{GET /oui-lookup?mac=XX:XX:XX:XX:XX:XX} que retorne el fabricante asociado al OUI de la MAC consultada, utilizando una base de datos local embebida en la flash de la ESP32.}{Alta}{Atacante}
+\frrow{RF-OFF-020}{API REST: control de ataque}{El firmware DEBE exponer endpoints HTTP \texttt{POST /attack/start}, \texttt{POST /attack/stop} y \texttt{GET /attack/status} para iniciar, detener y consultar el estado de la cadena ofensiva desde el Panel del Atacante.}{Alta}{Atacante}
+\frrow{RF-OFF-021}{API REST: configuración}{El firmware DEBE exponer endpoints HTTP \texttt{GET /config} y \texttt{POST /config} para consultar y modificar la configuración del firmware (BSSID objetivo, MAC víctima, SSID a clonar, canal, duraciones de fase).}{Alta}{Atacante}
+\frrow{RF-OFF-022}{API REST: credenciales capturadas}{El firmware DEBE exponer un endpoint HTTP \texttt{GET /credentials} que retorne en formato JSON la lista de credenciales ficticias capturadas en el portal cautivo durante la sesión actual, incluyendo timestamp e IP del cliente.}{Alta}{Atacante}
+\frrow{RF-OFF-023}{API REST: stream de eventos}{El firmware DEBE exponer un endpoint HTTP \texttt{GET /events} que entregue eventos en tiempo real (cambios de fase, conexiones de clientes, capturas de credenciales) al Panel del Atacante mediante Server-Sent Events o polling con cooldown.}{Media}{Atacante}
+\frrow{RF-OFF-024}{Base de datos OUI embebida}{El firmware DEBE incluir una base de datos OUI local embebida en la flash, cubriendo al menos los 5\,000 fabricantes más comunes según el registro público IEEE.}{Alta}{Atacante}
+\frrow{RF-OFF-025}{Validación ética en API}{El endpoint \texttt{POST /attack/start} DEBE rechazar peticiones cuyo BSSID objetivo no esté autorizado por el Validador Ético (RNF-SYS-004), retornando código HTTP 403 con mensaje descriptivo.}{Alta}{Atacante}
+\end{frtable}
+
+\textbf{Trazabilidad:} estos requerimientos se derivan de los objetivos
+ofensivos O-01 a O-09 del Documento de Visión.
+
+% ==============================================================================
+\section{Requerimientos Funcionales del Panel del Atacante}
+% ==============================================================================
+
+\begin{frtable}
+\frrow{RF-PAT-001}{Pantalla de inicio}{El Panel DEBE presentar una pantalla inicial donde el Operador del Atacante puede verificar la conexión con la ESP32 (estado de la API) y acceder a las funcionalidades principales.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-002}{Reconocimiento de redes}{El Panel DEBE permitir al Operador iniciar un escaneo de redes WiFi cercanas (consumiendo \texttt{GET /scan}) y mostrar los resultados en una tabla con SSID, BSSID, canal, RSSI y cifrado.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-003}{Selección de red objetivo}{El Panel DEBE permitir al Operador seleccionar una red de la lista de escaneo como objetivo del ataque, mostrando explícitamente los datos de la red seleccionada.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-004}{Reconocimiento de clientes}{El Panel DEBE permitir al Operador iniciar la detección de clientes asociados al BSSID seleccionado (consumiendo \texttt{GET /clients}) y mostrar la lista de MACs detectadas.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-005}{Identificación de fabricante}{Para cada MAC detectada, el Panel DEBE mostrar el fabricante asociado consultando \texttt{GET /oui-lookup?mac=...}.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-006}{Selección de víctima}{El Panel DEBE permitir al Operador seleccionar una MAC específica de la lista de clientes como víctima del ataque, mostrando explícitamente los datos de la víctima seleccionada.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-007}{Confirmación ética obligatoria}{Antes de habilitar el botón de lanzamiento del ataque, el Panel DEBE presentar una pantalla de confirmación ética donde el Operador debe marcar explícitamente que el objetivo es propiedad del equipo o cuenta con autorización del propietario.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-008}{Lanzamiento del ataque}{El Panel DEBE permitir al Operador lanzar la cadena ofensiva (consumiendo \texttt{POST /attack/start}) con la configuración de objetivo y víctima previamente seleccionada.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-009}{Vista en vivo del ataque}{Durante la ejecución de un ataque, el Panel DEBE mostrar la fase actual, los contadores en vivo (beacons emitidos, deauths emitidos, clientes conectados al Evil Twin) y el tiempo restante o transcurrido de la fase.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-010}{Detención del ataque}{El Panel DEBE proveer un botón siempre visible y prominente para detener inmediatamente cualquier ataque en curso (consumiendo \texttt{POST /attack/stop}).}{Alta}{Panel Atacante}
+\frrow{RF-PAT-011}{Visualización de credenciales}{Cuando el Evil Twin captura credenciales ficticias, el Panel DEBE mostrarlas en tiempo real con timestamp, IP del cliente y datos ingresados.}{Alta}{Panel Atacante}
+\frrow{RF-PAT-012}{Configuración avanzada}{El Panel DEBERÍA permitir al Operador configurar parámetros avanzados del ataque (duración de cada fase, modo encadenado vs individual) antes de lanzarlo.}{Media}{Panel Atacante}
+\frrow{RF-PAT-013}{Resumen post-ataque}{Tras la finalización del ataque, el Panel DEBE mostrar un resumen con duración total, contadores finales por fase y credenciales capturadas.}{Media}{Panel Atacante}
+\end{frtable}
+
+\textbf{Trazabilidad:} estos requerimientos se derivan de los objetivos
+ofensivos O-07 y O-08 del Documento de Visión.
+
+% ==============================================================================
+\section{Requerimientos Funcionales del Subsistema Defensivo}
+% ==============================================================================
+
+\begin{frtable}
+\frrow{RF-DEF-001}{Captura desde interfaz en modo monitor}{El detector DEBE capturar frames 802.11 en tiempo real desde una interfaz de red configurada en modo monitor, identificada por su nombre (ej: \texttt{panda0}).}{Alta}{Detector}
+\frrow{RF-DEF-002}{Captura desde archivo PCAP}{El detector DEBE soportar el análisis de archivos PCAP previamente capturados como fuente de entrada alternativa, con la misma lógica de detección que en captura en vivo.}{Alta}{Detector}
+\frrow{RF-DEF-003}{Configuración por argumentos}{El detector DEBE recibir su configuración (interfaz, canal, BSSID protegido, SSID protegido, archivo PCAP de entrada) por argumentos de línea de comandos.}{Alta}{Detector}
+\frrow{RF-DEF-004}{Detección de Beacon Flooding}{El detector DEBE identificar la fase de Beacon Flooding mediante el cálculo de la tasa de beacons únicos por segundo en el canal monitoreado, comparándola contra un umbral configurable.}{Alta}{Detector}
+\frrow{RF-DEF-005}{Detección de Deauthentication}{El detector DEBE identificar la fase de Deauthentication mediante el conteo de frames de deauth dirigidos al BSSID protegido en una ventana temporal configurable.}{Alta}{Detector}
+\frrow{RF-DEF-006}{Detección de Evil Twin}{El detector DEBE identificar la fase de Evil Twin mediante la detección de beacons que anuncian el SSID protegido pero con un BSSID distinto al BSSID protegido conocido.}{Alta}{Detector}
+\frrow{RF-DEF-007}{Correlación de cadena}{El detector DEBE identificar la cadena ofensiva completa cuando las tres fases ocurren en secuencia temporal dentro de una ventana configurable, emitiendo una alerta agregada.}{Media}{Detector}
+\frrow{RF-DEF-008}{Emisión de alertas por consola}{El detector DEBE emitir cada alerta por consola con marca de tiempo en formato ISO 8601, tipo de ataque, y metadatos relevantes (BSSID, MAC de origen, contadores).}{Alta}{Detector}
+\frrow{RF-DEF-009}{Niveles de severidad}{Cada alerta DEBE tener un nivel de severidad (INFO, WARNING, ALERT, CRITICAL) que diferencie eventos informativos de detecciones confirmadas de ataque.}{Alta}{Detector}
+\frrow{RF-DEF-010}{Configuración de umbrales}{Los umbrales de detección (tasa de beacons, conteo de deauths, ventana de correlación) DEBEN ser configurables sin necesidad de modificar el código fuente.}{Alta}{Detector}
+\frrow{RF-DEF-011}{Operación pasiva}{El detector NO DEBE inyectar tráfico al medio inalámbrico bajo ninguna circunstancia. Todas las operaciones son de lectura.}{Alta}{Detector}
+\frrow{RF-DEF-012}{Manejo de interrupción}{El detector DEBE manejar correctamente la señal de interrupción (Ctrl+C), liberando recursos y emitiendo un resumen de la sesión antes de terminar.}{Alta}{Detector}
+\frrow{RF-DEF-013}{Resumen de sesión}{Al finalizar la ejecución, el detector DEBE emitir un resumen con el conteo total de alertas por tipo y la duración de la sesión.}{Media}{Detector}
+\frrow{RF-DEF-014}{Filtrado por canal}{El detector DEBE procesar únicamente frames del canal configurado, ignorando ruido de otros canales que pueda llegar al adaptador.}{Media}{Detector}
+\frrow{RF-DEF-015}{Lista blanca de BSSIDs conocidos}{El detector DEBERÍA permitir configurar una lista blanca de BSSIDs conocidos para evitar falsos positivos en la detección de Evil Twin con redes legítimas múltiples.}{Baja}{Detector}
+\end{frtable}
+
+\textbf{Trazabilidad:} estos requerimientos se derivan de los objetivos
+defensivos D-01 a D-07 del Documento de Visión.
+
+% ==============================================================================
+\section{Requerimientos Funcionales del Panel del Defensor}
+% ==============================================================================
+
+\begin{frtable}
+\frrow{RF-PDE-001}{Servidor local}{El Panel del Defensor DEBE ser servido en \texttt{localhost} de la laptop detectora mediante un servidor Python con FastAPI, accesible por defecto en \texttt{http://localhost:8000}.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-002}{Integración con el detector}{El servidor del Panel DEBE integrar el detector como un componente interno, ejecutándolo en un hilo de fondo y recibiendo sus alertas mediante el patrón observador o cola compartida.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-003}{Comunicación en tiempo real}{El Panel DEBE recibir las alertas del detector mediante WebSockets, propagándolas al frontend en menos de 2 segundos desde la detección.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-004}{Estado del detector}{El Panel DEBE mostrar visiblemente el estado actual del detector (corriendo, detenido, error) y permitir iniciarlo o detenerlo desde la interfaz.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-005}{Indicador visual de amenaza}{El Panel DEBE mostrar un indicador visual de nivel de amenaza con tres estados: verde (sin alertas activas), amarillo (al menos una alerta de cualquier fase), rojo (cadena ofensiva completa detectada).}{Alta}{Panel Defensor}
+\frrow{RF-PDE-006}{Lista de alertas en tiempo real}{El Panel DEBE mostrar una lista cronológica de las alertas emitidas durante la sesión actual, con timestamp, severidad, tipo de ataque y metadatos relevantes. Las alertas nuevas DEBEN aparecer al tope sin requerir refresco manual.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-007}{Contadores agregados}{El Panel DEBE mostrar contadores agregados por tipo de alerta (Beacon Flood, Deauthentication, Evil Twin, Cadena Ofensiva) actualizados en tiempo real.}{Alta}{Panel Defensor}
+\frrow{RF-PDE-008}{Configuración inicial desde Panel}{El Panel DEBERÍA permitir al Operador configurar parámetros básicos del detector (interfaz, canal, BSSID protegido, SSID protegido) desde la interfaz antes de iniciar la sesión.}{Media}{Panel Defensor}
+\frrow{RF-PDE-009}{Reinicio de sesión}{El Panel DEBE permitir al Operador reiniciar la sesión, limpiando contadores y la lista de alertas activas, sin necesidad de reiniciar el servidor.}{Media}{Panel Defensor}
+\frrow{RF-PDE-010}{Compatibilidad con consola}{La emisión de alertas por consola estándar (RF-DEF-008) DEBE mantenerse disponible en paralelo al Panel del Defensor, garantizando operación funcional incluso si el navegador no está disponible.}{Alta}{Panel Defensor}
+\end{frtable}
+
+\textbf{Trazabilidad:} estos requerimientos se derivan del objetivo defensivo
+D-08 del Documento de Visión.
+
+% ==============================================================================
+\section{Requerimientos Funcionales del Sistema Completo}
+% ==============================================================================
+
+\begin{frtable}
+\frrow{RF-SYS-001}{Modo demostración integrada}{El sistema completo DEBE permitir una demostración end-to-end donde la ESP32 ejecuta la cadena ofensiva y, simultáneamente, el detector identifica cada fase y emite las alertas correspondientes.}{Alta}{Sistema}
+\frrow{RF-SYS-002}{Capturas PCAP de referencia}{El equipo DEBE generar y almacenar un conjunto de archivos PCAP de referencia que contengan ejemplos de cada fase de la cadena ofensiva, utilizables para desarrollo y testing del detector.}{Alta}{Sistema}
+\frrow{RF-SYS-003}{Documentación completa}{El proyecto DEBE incluir los siguientes documentos compilados en PDF al momento de la entrega: Documento de Visión, Threat Model, Fundamentos Técnicos, Manual de Laboratorio, SRS, Casos de Uso, Arquitectura y Diseño Detallado.}{Alta}{Sistema}
+\frrow{RF-SYS-004}{Repositorio de código}{El código fuente del firmware ofensivo y del detector DEBE estar disponible en un repositorio Git con instrucciones de instalación y uso reproducibles.}{Alta}{Sistema}
+\frrow{RF-SYS-005}{Bitácora de sesiones}{Cada sesión de pruebas DEBE quedar documentada en una bitácora con fecha, hora, participantes, fases ejecutadas y resultados.}{Media}{Sistema}
+\end{frtable}
+
+\textbf{Trazabilidad:} estos requerimientos se derivan de los objetivos
+generales G-01 a G-04 del Documento de Visión.
+
+% ==============================================================================
+\section{Requerimientos No Funcionales}
+% ==============================================================================
+
+Los requerimientos no funcionales se agrupan por categoría siguiendo el
+estándar IEEE 830.
+
+\subsection{Rendimiento}
+
+\begin{nfrtable}
+\nfrrow{RNF-DEF-001}{Rendimiento}{El detector DEBE procesar el flujo de captura sin pérdida significativa de paquetes en condiciones normales de laboratorio (densidad media de redes vecinas).}{Alta}{Verificación con captura simultánea en \texttt{tcpdump} y comparación de conteos}
+\nfrrow{RNF-DEF-002}{Rendimiento}{El detector DEBE emitir alertas en menos de 2 segundos desde el momento en que ocurre el evento detectable.}{Alta}{Medición con marcas de tiempo durante demostración}
+\nfrrow{RNF-OFF-001}{Rendimiento}{El firmware ofensivo DEBE iniciar cada fase en menos de 5 segundos desde la activación.}{Media}{Medición con cronómetro durante pruebas}
+\nfrrow{RNF-DEF-003}{Rendimiento}{El detector DEBE soportar sesiones continuas de al menos 30 minutos sin degradación de rendimiento ni uso creciente de memoria.}{Media}{Prueba de duración con monitoreo de \texttt{top}}
+\nfrrow{RNF-PAT-001}{Rendimiento}{Las respuestas de la API REST de la ESP32 a peticiones simples (status, config) DEBEN entregarse en menos de 500 ms en condiciones normales de operación.}{Alta}{Medición con \texttt{curl} y registro de latencias}
+\nfrrow{RNF-PAT-002}{Rendimiento}{El escaneo de redes (\texttt{GET /scan}) DEBE completarse en menos de 15 segundos.}{Media}{Medición durante pruebas}
+\nfrrow{RNF-PDE-001}{Rendimiento}{Las alertas emitidas por el detector DEBEN aparecer en el Panel del Defensor en menos de 2 segundos desde su generación.}{Alta}{Medición de latencia con marcas de tiempo}
+\end{nfrtable}
+
+\subsection{Usabilidad}
+
+\begin{nfrtable}
+\nfrrow{RNF-DEF-004}{Usabilidad}{Las alertas emitidas por consola DEBEN ser legibles para un operador humano sin necesidad de herramientas adicionales de parseo.}{Alta}{Inspección visual de salida}
+\nfrrow{RNF-DEF-005}{Usabilidad}{La configuración del detector DEBE poder modificarse sin reiniciar el desarrollo (archivo de configuración o argumentos de línea de comandos).}{Alta}{Verificación durante pruebas}
+\nfrrow{RNF-OFF-002}{Usabilidad}{El operador del atacante DEBE poder iniciar la cadena completa con una única acción (un botón o un comando).}{Alta}{Demostración funcional}
+\nfrrow{RNF-SYS-001}{Usabilidad}{La página del portal cautivo DEBE ser legible y operable desde el navegador del Redmi Note 7 sin scroll horizontal.}{Media}{Prueba en dispositivo}
+\nfrrow{RNF-PAT-003}{Usabilidad}{El Panel del Atacante DEBE ser operable desde un navegador moderno (Chromium, Firefox) sin requerir extensiones ni configuración previa.}{Alta}{Pruebas en distintos navegadores}
+\nfrrow{RNF-PAT-004}{Usabilidad}{El flujo completo del ataque (escaneo, selección, validación ética, lanzamiento) DEBE poder completarse desde el Panel sin requerir comandos por consola serial.}{Alta}{Prueba de flujo end-to-end desde el panel}
+\nfrrow{RNF-PDE-002}{Usabilidad}{El indicador visual de amenaza del Panel del Defensor DEBE ser comprensible sin instrucciones adicionales (uso de colores estándar verde/amarillo/rojo).}{Alta}{Inspección visual y prueba con observador externo}
+\end{nfrtable}
+
+\subsection{Confiabilidad}
+
+\begin{nfrtable}
+\nfrrow{RNF-DEF-006}{Confiabilidad}{El detector DEBE alcanzar una tasa de detección verdaderos positivos superior al 90\% para cada fase de la cadena en pruebas controladas.}{Alta}{Pruebas de 10 ejecuciones por fase con conteo de detecciones}
+\nfrrow{RNF-DEF-007}{Confiabilidad}{El detector DEBE mantener una tasa de falsos positivos inferior al 10\% durante operación normal sin ataques activos.}{Alta}{Captura de 10 minutos sin ataques con conteo de alertas espurias}
+\nfrrow{RNF-OFF-003}{Confiabilidad}{La cadena ofensiva DEBE completar las tres fases en al menos 9 de 10 ejecuciones consecutivas.}{Alta}{Pruebas repetidas en sesión de laboratorio}
+\nfrrow{RNF-SYS-002}{Confiabilidad}{El sistema DEBE recuperarse de fallos no críticos (ej: víctima fuera de rango temporalmente) sin requerir reinicio del firmware o del detector.}{Media}{Prueba con desconexión voluntaria de víctima}
+\end{nfrtable}
+
+\subsection{Mantenibilidad}
+
+\begin{nfrtable}
+\nfrrow{RNF-DEF-008}{Mantenibilidad}{El código del detector DEBE estar organizado en módulos separados por responsabilidad (captura, análisis por tipo de ataque, correlación, reporte).}{Alta}{Inspección de estructura del repositorio}
+\nfrrow{RNF-DEF-009}{Mantenibilidad}{Cada módulo del detector DEBE tener documentación de sus funciones públicas (docstrings en Python).}{Alta}{Inspección con \texttt{help()} en Python}
+\nfrrow{RNF-OFF-004}{Mantenibilidad}{El firmware ofensivo DEBE estar organizado de modo que cada fase de la cadena sea un módulo independiente.}{Alta}{Inspección del código fuente}
+\nfrrow{RNF-SYS-003}{Mantenibilidad}{Todo el código DEBE estar versionado en Git con mensajes de commit descriptivos.}{Alta}{Inspección del historial}
+\end{nfrtable}
+
+\subsection{Portabilidad}
+
+\begin{nfrtable}
+\nfrrow{RNF-DEF-010}{Portabilidad}{El detector DEBE ejecutarse en al menos dos distribuciones Linux: Arch Linux y Ubuntu Server 22.04 LTS.}{Alta}{Pruebas en ambas distribuciones}
+\nfrrow{RNF-DEF-011}{Portabilidad}{El detector DEBERÍA poder ejecutarse para análisis de archivos PCAP en sistemas Windows y macOS, si Scapy está disponible.}{Media}{Prueba de análisis offline en Windows}
+\nfrrow{RNF-OFF-005}{Portabilidad}{El firmware ofensivo DEBE compilarse con Arduino-ESP32 versión 2.0 o superior, o con ESP-IDF versión 5.0 o superior.}{Alta}{Compilación verificada}
+\end{nfrtable}
+
+\subsection{Seguridad}
+
+\begin{nfrtable}
+\nfrrow{RNF-SYS-004}{Seguridad}{La direccionalidad de los ataques generados por el firmware ofensivo DEBE estar restringida al BSSID y MAC del laboratorio. El firmware DEBE rechazar configuraciones que apunten a BSSID o MAC de redes conocidas externas.}{Alta}{Inspección de código + prueba con BSSID arbitrario}
+\nfrrow{RNF-SYS-005}{Seguridad}{Las credenciales capturadas por el portal cautivo DEBEN almacenarse únicamente en memoria volátil (no en almacenamiento persistente). Al apagar la ESP32, las credenciales se pierden.}{Alta}{Inspección de código}
+\nfrrow{RNF-SYS-006}{Seguridad}{El detector NO DEBE almacenar tráfico capturado en disco a menos que el operador lo solicite explícitamente.}{Alta}{Inspección de comportamiento por defecto}
+\nfrrow{RNF-SYS-007}{Seguridad}{El portal cautivo DEBE incluir una marca visible que advierta a cualquier usuario que se trata de una demostración educativa.}{Alta}{Inspección de página servida}
+\end{nfrtable}
+
+\subsection{Documentación}
+
+\begin{nfrtable}
+\nfrrow{RNF-SYS-008}{Documentación}{Cada documento de ingeniería DEBE seguir la plantilla LaTeX común de WARDEN (\texttt{warden-style.sty}).}{Alta}{Inspección de archivos .tex}
+\nfrrow{RNF-SYS-009}{Documentación}{Cada requerimiento de este SRS DEBE estar trazado a un objetivo del Documento de Visión.}{Alta}{Verificación de tabla de trazabilidad}
+\nfrrow{RNF-SYS-010}{Documentación}{El repositorio DEBE incluir un archivo \texttt{README.md} con instrucciones de instalación y ejecución de cada subsistema.}{Alta}{Inspección del repositorio}
+\end{nfrtable}
+
+% ==============================================================================
+\section{Requerimientos de Interfaces Externas}
+% ==============================================================================
+
+\subsection{Interfaces de Hardware}
+
+\begin{datatable}{L{3.5cm} L{12.3cm}}{Interfaz & Descripción}
+\drow{ESP32 - USB Serial    & La ESP32 expone una consola serial vía USB para configuración, control y emisión de logs. Velocidad por defecto: 115200 baudios.}
+\drow{ESP32 - Botón físico  & Botón conectado a un pin GPIO de la ESP32 que permite iniciar la cadena ofensiva sin computador conectado.}
+\drow{ESP32 - Antena 802.11 & Antena interna de la ESP32, banda 2.4 GHz. La ESP32 opera simultáneamente como emisor de frames maliciosos y como AP del Evil Twin (alternando los modos según la fase).}
+\drow{Panda PAU0B AC600 - USB & Adaptador WiFi USB conectado a la laptop detectora. Driver \texttt{mt76x0u}, modo monitor en banda 2.4 GHz.}
+\drow{Panda PAU0B AC600 - Antena & Antena externa del adaptador. Sintonizada al canal del laboratorio durante toda la sesión.}
+\end{datatable}
+
+\subsection{Interfaces de Software}
+
+\begin{datatable}{L{3.5cm} L{12.3cm}}{Interfaz & Descripción}
+\drow{Detector - Sistema operativo & El detector invoca al sistema operativo Linux para configurar el modo monitor de la interfaz (\texttt{iw}, \texttt{ip}) antes de iniciar la captura.}
+\drow{Detector - Scapy & El detector utiliza Scapy 2.5+ para captura de paquetes (\texttt{sniff()}) y parseo de frames 802.11 (\texttt{Dot11}, \texttt{Dot11Beacon}, \texttt{Dot11Deauth}).}
+\drow{Firmware - Arduino-ESP32 / ESP-IDF & El firmware se compila contra el framework de desarrollo de ESP32. Las APIs específicas para emitir frames de gestión arbitrarios provienen de bibliotecas de la comunidad o de modificaciones documentadas del SDK.}
+\drow{Panel del Defensor - FastAPI & El servidor del Panel del Defensor utiliza FastAPI 0.110+ para servir el frontend HTML, exponer la API interna y mantener conexiones WebSocket con el navegador.}
+\drow{Panel del Defensor - WebSocket & La comunicación de alertas en tiempo real desde el detector hacia el frontend del Panel del Defensor utiliza el protocolo WebSocket sobre HTTP/1.1.}
+\drow{Panel del Atacante - API REST de la ESP32 & El frontend del Panel del Atacante consume endpoints HTTP/JSON expuestos por el firmware de la ESP32. La comunicación es HTTP plano (sin TLS) sobre la red local \texttt{WARDEN\_CONTROL}.}
+\drow{Frontends - Tailwind CSS via CDN & Los dos paneles (Atacante y Defensor) cargan Tailwind CSS desde CDN público para el estilo visual. No requieren build steps locales.}
+\end{datatable}
+
+\subsection{Interfaces de Comunicación}
+
+\begin{datatable}{L{3.5cm} L{12.3cm}}{Interfaz & Descripción}
+\drow{Aire - Frames 802.11 & Medio de comunicación entre subsistemas para los ataques. Banda 2.4 GHz, canal del laboratorio, frames 802.11 sin cifrado durante el Evil Twin (red abierta) y con cifrado WPA2 durante la operación normal del router de laboratorio.}
+\drow{Aire - DHCP/DNS/HTTP & Durante la fase de Evil Twin, los clientes víctima intercambian con el AP malicioso protocolos DHCP, DNS y HTTP. Toda esta comunicación ocurre dentro de la red WiFi falsa servida por la ESP32.}
+\drow{Aire - WiFi WARDEN\_CONTROL & Red WiFi 2.4 GHz emitida por la ESP32 cuando no está en modo ataque, accesible mediante WPA2-Personal con credenciales conocidas por el equipo. La laptop del Operador del Atacante se conecta a esta red para consumir la API REST.}
+\drow{HTTP/JSON sobre WiFi & La comunicación entre el Panel del Atacante y la ESP32 ocurre sobre HTTP plano con cuerpos en formato JSON, dentro de la red \texttt{WARDEN\_CONTROL}.}
+\drow{HTTP/WebSocket sobre localhost & La comunicación entre el frontend del Panel del Defensor y el servidor FastAPI ocurre exclusivamente sobre la interfaz de loopback (\texttt{127.0.0.1}).}
+\end{datatable}
+
+% ==============================================================================
+\section{Trazabilidad: Requerimientos a Objetivos}
+% ==============================================================================
+
+La siguiente tabla establece la trazabilidad entre los requerimientos
+funcionales y los objetivos del Documento de Visión.
+
+\begin{datatable}{L{2.5cm} L{12.8cm}}{Objetivo & Requerimientos que lo cubren}
+\drow{O-01 (Beacon Flooding)        & RF-OFF-003, RF-OFF-004}
+\drow{O-02 (Deauthentication)       & RF-OFF-005, RF-OFF-006}
+\drow{O-03 (Evil Twin AP)           & RF-OFF-007, RF-OFF-008, RF-OFF-009}
+\drow{O-04 (Portal cautivo)         & RF-OFF-010, RF-OFF-011, RF-OFF-012}
+\drow{O-05 (Modos automatico/manual) & RF-OFF-001, RF-OFF-002, RF-OFF-013, RF-OFF-014}
+\drow{O-06 (Mapeo MITRE ATT\&CK)    & Cubierto en Threat Model}
+\drow{D-01 (Detección Beacon Flood) & RF-DEF-004, RNF-DEF-006}
+\drow{D-02 (Detección Deauth)       & RF-DEF-005, RNF-DEF-006}
+\drow{D-03 (Detección Evil Twin)    & RF-DEF-006, RNF-DEF-006}
+\drow{D-04 (Alertas en consola)     & RF-DEF-008, RF-DEF-009, RNF-DEF-002, RNF-DEF-004}
+\drow{D-05 (Operación pasiva)       & RF-DEF-011}
+\drow{D-06 (Captura en vivo y PCAP) & RF-DEF-001, RF-DEF-002}
+\drow{D-07 (Correlación de cadena)  & RF-DEF-007}
+\drow{D-08 (Panel del Defensor)     & RF-PDE-001 a RF-PDE-010, RNF-PDE-001, RNF-PDE-002}
+\drow{O-07 (API REST en ESP32)      & RF-OFF-016 a RF-OFF-023, RF-OFF-025}
+\drow{O-08 (Panel del Atacante)     & RF-PAT-001 a RF-PAT-013, RNF-PAT-001 a RNF-PAT-004}
+\drow{O-09 (Base de datos OUI)      & RF-OFF-019, RF-OFF-024}
+\drow{G-01 (Documentación)          & RF-SYS-003, RNF-SYS-008, RNF-SYS-009, RNF-SYS-010}
+\drow{G-02 (Demostración E2E)       & RF-SYS-001}
+\drow{G-03 (Capturas PCAP)          & RF-SYS-002}
+\drow{G-04 (Repositorio Git)        & RF-SYS-004, RNF-SYS-003}
+\end{datatable}
+
+% ==============================================================================
+\section{Verificación y Aceptación}
+% ==============================================================================
+
+\subsection{Criterios Generales de Aceptación}
+El sistema WARDEN se considerará completo y aceptable cuando:
+
+\begin{enumerate}
+  \item Todos los requerimientos de prioridad \textbf{Alta} estén
+    implementados y verificados.
+  \item Al menos el 70\% de los requerimientos de prioridad \textbf{Media}
+    estén implementados.
+  \item La demostración funcional end-to-end se ejecute con éxito durante
+    la sesión de entrega del proyecto.
+  \item Los siete documentos formales de ingeniería estén compilados y
+    revisados.
+\end{enumerate}
+
+\subsection{Métodos de Verificación}
+La verificación de cada requerimiento se realiza mediante uno o más de
+los siguientes métodos:
+
+\begin{datatable}{L{3cm} L{12.3cm}}{Método & Descripción}
+\drow{Inspección  & Revisión manual de código, configuración o documentación.}
+\drow{Demostración & Ejecución del sistema mostrando el comportamiento esperado.}
+\drow{Prueba       & Ejecución de un escenario específico con criterio de aceptación cuantificable.}
+\drow{Análisis     & Cálculo o razonamiento basado en propiedades del sistema.}
+\end{datatable}
+
+Cada requerimiento no funcional incluye su método de verificación
+recomendado en su tabla correspondiente.
+
+\subsection{Plan de Pruebas de Aceptación}
+El plan detallado de pruebas se desarrolla en un documento separado
+durante la fase de implementación. A alto nivel, incluye al menos:
+
+\begin{itemize}
+  \item Una prueba por cada fase de la cadena ofensiva ejecutada
+    individualmente.
+  \item Una prueba de la cadena completa automática.
+  \item Diez ejecuciones consecutivas para medir tasa de éxito (RNF-DEF-006,
+    RNF-OFF-003).
+  \item Una sesión de captura sin ataques para medir falsos positivos
+    (RNF-DEF-007).
+  \item Una sesión de duración (al menos 30 minutos) para validar
+    estabilidad del detector.
+\end{itemize}
+
+\end{document}

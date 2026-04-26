@@ -1,0 +1,171 @@
+# ---------------------------------------------------------------
+# docs/ - keep ONLY LaTeX source (.tex / .sty), drop everything else
+# ---------------------------------------------------------------
+docs/**
+!docs/
+!docs/latex/
+!docs/latex/*.tex
+!docs/latex/*.sty
+
+# ---------------------------------------------------------------
+# LaTeX build artifacts (anywhere in the tree)
+# ---------------------------------------------------------------
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.brf
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.pdfsync
+*.run.xml
+*.snm
+*.synctex
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.vrb
+*.xdv
+
+# ---------------------------------------------------------------
+# Wireless capture / lab artifacts (airodump-ng, kismet, tcpdump)
+# ---------------------------------------------------------------
+*.cap
+*.pcap
+*.pcapng
+*.kismet.csv
+*.kismet.netxml
+*.log.csv
+captura-*
+handshake-*
+captures/
+
+# ---------------------------------------------------------------
+# Reports (per-session markdown)
+# ---------------------------------------------------------------
+reports/session-*.md
+
+# ---------------------------------------------------------------
+# Python (FastAPI + Scapy detector)
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------
+# ESP32 firmware (Arduino-ESP32, ESP-IDF, PlatformIO)
+# ---------------------------------------------------------------
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+*.bin
+*.elf
+*.hex
+*.map
+*.uf2
+*.lst
+*.o
+*.obj
+*.a
+*.ld
+compile_commands.json
+
+# ---------------------------------------------------------------
+# Node / JS (frontend tooling, if any is added later)
+# ---------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp.*
+.yarn/
+
+# ---------------------------------------------------------------
+# Secrets & local config
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# ---------------------------------------------------------------
+# Logs & temp
+# ---------------------------------------------------------------
+*.log
+logs/
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ---------------------------------------------------------------
+# Editors / IDEs (nvim, VSCode, Arduino IDE, JetBrains)
+# ---------------------------------------------------------------
+*.swp
+*.swo
+*.swn
+*~
+.netrwhist
+Session.vim
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+.cache/
+
+# ---------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

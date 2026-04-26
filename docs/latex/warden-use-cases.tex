@@ -1,0 +1,1184 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Documento de Casos de Uso}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento describe los casos de uso del sistema WARDEN: cada
+interacción significativa entre un actor (humano o sistema externo) y el
+sistema, junto con sus precondiciones, postcondiciones, flujos principales
+y flujos alternos.
+
+Los casos de uso traducen los requerimientos funcionales especificados en
+el SRS a escenarios concretos de operación. Cada caso de uso está trazado
+a uno o más requerimientos funcionales del SRS.
+
+\subsection{Audiencia}
+Este documento está dirigido a los integrantes del equipo de desarrollo
+(como guía de qué escenarios deben funcionar) y al profesor evaluador
+(como referencia de las interacciones que serán demostradas durante la
+entrega).
+
+\subsection{Alcance}
+El documento cubre los doce casos de uso identificados a partir del SRS,
+agrupados por subsistema (ofensivo, defensivo, sistema completo) y por
+actor.
+
+\subsection{Convención de Identificadores}
+Cada caso de uso tiene un identificador único con el formato
+\texttt{UC-NN}, donde \texttt{NN} es una secuencia de dos dígitos.
+
+\subsection{Estructura de las Fichas}
+Cada ficha de caso de uso contiene los siguientes campos estándar:
+
+\begin{datatable}{L{3.2cm} L{12.1cm}}{Campo & Significado}
+\drow{ID                        & Identificador único del caso de uso (\texttt{UC-NN}).}
+\drow{Nombre                    & Descripción breve y orientada a la acción.}
+\drow{Actor Primario            & Actor que inicia el caso de uso.}
+\drow{Actores Secundarios       & Otros actores que participan, si aplica.}
+\drow{Requerimientos Cubiertos  & IDs de requerimientos del SRS que este caso de uso implementa.}
+\drow{Prioridad                 & Importancia del caso de uso (Alta, Media, Baja).}
+\drow{Precondiciones            & Condiciones que deben cumplirse antes de iniciar el caso de uso.}
+\drow{Postcondiciones           & Estado del sistema al finalizar exitosamente.}
+\drow{Flujo Principal           & Secuencia de pasos en el escenario exitoso.}
+\drow{Flujos Alternos           & Variaciones y caminos de error.}
+\drow{Notas                     & Observaciones técnicas o aclaraciones.}
+\end{datatable}
+
+\subsection{Referencias}
+\begin{itemize}
+  \item Documento WARDEN \emph{Documento de Visión}.
+  \item Documento WARDEN \emph{Especificación de Requerimientos de Software}.
+  \item Documento WARDEN \emph{Threat Model y Cadena de Ataque}.
+\end{itemize}
+
+% ==============================================================================
+\section{Actores del Sistema}
+% ==============================================================================
+
+WARDEN tiene cuatro actores principales, definidos en el Documento de
+Visión y en el SRS:
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Actor & Descripción}
+\drow{Operador del Atacante    & Persona que controla la ESP32 y selecciona qué fase ejecutar. Inicia la cadena completa o cada fase individualmente. Interactúa por consola serial o botón físico.}
+\drow{Operador del Detector    & Persona que ejecuta el software detector y monitorea las alertas. Interactúa por línea de comandos.}
+\drow{Operador de la Víctima   & Persona que opera los dispositivos víctima durante la demostración. Para fines demostrativos, ingresa credenciales ficticias en el portal cautivo.}
+\drow{Observador               & Persona que estudia el sistema sin interactuar directamente. Es el rol del profesor evaluador y de los estudiantes espectadores durante la demostración.}
+\end{datatable}
+
+% ==============================================================================
+\section{Diagrama de Casos de Uso (Vista General)}
+% ==============================================================================
+
+El siguiente diagrama representa la relación entre actores y casos de
+uso del sistema:
+
+\vspace{0.3cm}
+\begin{verbatim}
+                 +============================================+
+                 |          SISTEMA WARDEN                    |
+                 |                                            |
+                 |  ----- SUBSISTEMA OFENSIVO -----           |
+                 |  ( UC-01: Iniciar cadena automatica )      |
+   Operador      |  ( UC-02: Ejecutar Beacon Flooding   )     |
+   del         <-+->( UC-03: Ejecutar Deauth            )     |
+   Atacante      |  ( UC-04: Ejecutar Evil Twin         )     |
+                 |  ( UC-05: Detener ataque en curso    )     |
+                 |  ( UC-06: Configurar BSSID objetivo  )     |
+                 |                                            |
+                 |  ----- PANEL DEL ATACANTE -----            |
+                 |  ( UC-13: Reconocer redes WiFi       )     |
+   Operador      |  ( UC-14: Reconocer clientes         )     |
+   del         <-+->( UC-15: Confirmar etica            )     |
+   Atacante      |  ( UC-16: Lanzar ataque desde panel  )     |
+                 |  ( UC-17: Monitorear ataque en panel )     |
+                 |                                            |
+                 |  ----- SUBSISTEMA DEFENSIVO -----          |
+                 |  ( UC-07: Iniciar deteccion en vivo  )     |
+   Operador      |  ( UC-08: Analizar archivo PCAP      )     |
+   del         <-+->( UC-09: Visualizar alertas         )     |
+   Detector      |  ( UC-10: Finalizar sesion           )     |
+                 |                                            |
+                 |  ----- PANEL DEL DEFENSOR -----            |
+   Operador      |  ( UC-18: Iniciar Panel del Defensor )     |
+   del         <-+->( UC-19: Visualizar amenazas en GUI )     |
+   Detector      |  ( UC-20: Reiniciar sesion en panel  )     |
+                 |                                            |
+                 |  ----- VICTIMA -----                       |
+   Operador      |  ( UC-11: Conectarse a Evil Twin e   )     |
+   de la       <-+->(        ingresar credenciales      )     |
+   Victima       |                                            |
+                 |                                            |
+                 |  ----- SISTEMA COMPLETO -----              |
+   Operador      |                                            |
+   del         <-+->( UC-12: Ejecutar demostracion E2E )      |
+   Atacante,     |                                            |
+   Detector,     |                                            |
+   Victima       |                                            |
+                 |                                            |
+                 +============================================+
+\end{verbatim}
+
+% ==============================================================================
+\section{Lista de Casos de Uso}
+% ==============================================================================
+
+\begin{datatable}{L{1.5cm} L{6.5cm} L{4.5cm} L{1.5cm}}{ID & Nombre & Actor Primario & Prioridad}
+\drow{UC-01 & Iniciar cadena ofensiva automática       & Operador del Atacante & Alta}
+\drow{UC-02 & Ejecutar Beacon Flooding individualmente & Operador del Atacante & Alta}
+\drow{UC-03 & Ejecutar Deauthentication individualmente & Operador del Atacante & Alta}
+\drow{UC-04 & Ejecutar Evil Twin individualmente       & Operador del Atacante & Alta}
+\drow{UC-05 & Detener ataque en curso                  & Operador del Atacante & Alta}
+\drow{UC-06 & Configurar BSSID objetivo                & Operador del Atacante & Alta}
+\drow{UC-07 & Iniciar detección en captura en vivo     & Operador del Detector & Alta}
+\drow{UC-08 & Analizar archivo PCAP                    & Operador del Detector & Alta}
+\drow{UC-09 & Visualizar alertas en tiempo real        & Operador del Detector & Alta}
+\drow{UC-10 & Finalizar sesión de detección            & Operador del Detector & Alta}
+\drow{UC-11 & Conectarse al Evil Twin e ingresar credenciales ficticias & Operador de la Víctima & Alta}
+\drow{UC-12 & Ejecutar demostración end-to-end         & Múltiples actores     & Alta}
+\drow{UC-13 & Reconocer redes WiFi cercanas desde el Panel del Atacante & Operador del Atacante & Alta}
+\drow{UC-14 & Reconocer clientes asociados a una red e identificar fabricantes & Operador del Atacante & Alta}
+\drow{UC-15 & Confirmar autorización ética del objetivo & Operador del Atacante & Alta}
+\drow{UC-16 & Lanzar ataque desde el Panel del Atacante & Operador del Atacante & Alta}
+\drow{UC-17 & Monitorear ataque en curso desde el Panel del Atacante & Operador del Atacante & Alta}
+\drow{UC-18 & Iniciar el Panel del Defensor            & Operador del Detector & Alta}
+\drow{UC-19 & Visualizar amenazas detectadas en el Panel del Defensor & Operador del Detector & Alta}
+\drow{UC-20 & Reiniciar sesión desde el Panel del Defensor & Operador del Detector & Media}
+\end{datatable}
+
+% ==============================================================================
+\section{Fichas Detalladas: Subsistema Ofensivo}
+% ==============================================================================
+
+\subsection{UC-01: Iniciar cadena ofensiva automática}
+
+\begin{uctable}
+\ucrow{ID}{UC-01}
+\ucrow{Nombre}{Iniciar cadena ofensiva automática}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-001, RF-OFF-014, RF-OFF-015}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada y con el firmware ofensivo cargado. \newline
+  (2) El BSSID objetivo está configurado correctamente. \newline
+  (3) El router de laboratorio está encendido y emitiendo. \newline
+  (4) Al menos un dispositivo víctima está conectado al router de laboratorio.
+}
+\ucrow{Postcondiciones}{
+  Las tres fases de la cadena ofensiva se han ejecutado en secuencia.
+  El portal cautivo ha estado activo y, si una víctima ingresó datos,
+  estos quedaron registrados en consola serial.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador presiona el botón físico de inicio (o envía el comando
+  \texttt{start} por consola serial). \newline
+  2. La ESP32 emite por consola serial un mensaje indicando inicio de la
+  cadena. \newline
+  3. La ESP32 inicia la fase de Beacon Flooding por la duración
+  configurada. \newline
+  4. Al finalizar Beacon Flooding, la ESP32 emite un mensaje de fin de
+  fase 1. \newline
+  5. La ESP32 inicia la fase de Deauthentication. \newline
+  6. Al finalizar Deauth, la ESP32 emite un mensaje de fin de fase 2. \newline
+  7. La ESP32 cambia a modo AP y levanta el Evil Twin con el portal
+  cautivo. \newline
+  8. La ESP32 espera conexiones de víctimas y registra cualquier credencial
+  recibida. \newline
+  9. Tras el tiempo configurado o detención manual, la ESP32 finaliza la
+  fase 3 y emite un resumen de la cadena.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Detención durante la cadena:} En cualquier punto, el
+  Operador puede invocar UC-05 (Detener ataque) y la cadena se interrumpe
+  emitiendo un resumen parcial. \newline
+  \textbf{A2 - BSSID no configurado:} Si en la precondición 2 falla, la
+  ESP32 emite un error por consola serial y aborta. \newline
+  \textbf{A3 - Ninguna víctima se conecta al Evil Twin:} La fase 3 termina
+  sin credenciales registradas. La cadena se considera completa de todas
+  formas (la captura es opcional).
+}
+\ucrow{Notas}{
+  La duración de cada fase es configurable según RF-OFF-015. Por defecto:
+  Beacon Flood 30 s, Deauth 15 s, Evil Twin 120 s.
+}
+\end{uctable}
+
+\subsection{UC-02: Ejecutar Beacon Flooding individualmente}
+
+\begin{uctable}
+\ucrow{ID}{UC-02}
+\ucrow{Nombre}{Ejecutar Beacon Flooding individualmente}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-002, RF-OFF-003, RF-OFF-004}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada con el firmware cargado. \newline
+  (2) El canal de operación está configurado.
+}
+\ucrow{Postcondiciones}{
+  La ESP32 ha emitido beacons falsos en el canal especificado durante el
+  tiempo definido por el Operador.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador envía el comando \texttt{beacon} por consola serial. \newline
+  2. La ESP32 emite un mensaje ``Iniciando Beacon Flooding''. \newline
+  3. La ESP32 emite al menos 50 beacons únicos por segundo en el canal
+  configurado, con SSIDs y BSSIDs falsificados. \newline
+  4. La ESP32 mantiene la emisión hasta recibir un comando \texttt{stop} o
+  hasta cumplirse la duración configurada. \newline
+  5. La ESP32 emite un mensaje ``Beacon Flooding finalizado'' con el conteo
+  total de beacons emitidos.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Detención manual:} El Operador envía \texttt{stop} antes
+  del tiempo configurado y la fase termina inmediatamente.
+}
+\ucrow{Notas}{
+  Los SSIDs falsos se generan a partir de un prefijo configurable o de una
+  lista predefinida (RF-OFF-003).
+}
+\end{uctable}
+
+\subsection{UC-03: Ejecutar Deauthentication individualmente}
+
+\begin{uctable}
+\ucrow{ID}{UC-03}
+\ucrow{Nombre}{Ejecutar Deauthentication individualmente}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Dispositivo víctima}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-002, RF-OFF-005, RF-OFF-006}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada con el firmware cargado. \newline
+  (2) El BSSID del router de laboratorio está configurado en la ESP32. \newline
+  (3) El router de laboratorio está encendido. \newline
+  (4) Al menos una víctima está asociada al router (ideal para que el
+  ataque sea visible).
+}
+\ucrow{Postcondiciones}{
+  La ESP32 ha emitido frames de deauthentication dirigidos al BSSID del
+  router. Si había víctimas conectadas, se desconectaron y, en el caso del
+  Redmi Note 7, intentaron reconectarse.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador envía el comando \texttt{deauth} por consola serial. \newline
+  2. La ESP32 emite ``Iniciando Deauthentication contra BSSID
+  \texttt{XX:XX:XX:XX:XX:XX}''. \newline
+  3. La ESP32 emite frames de deauth con dirección de origen suplantando
+  al BSSID legítimo, dirigidos al broadcast del BSSID o a MACs específicas
+  de víctimas. \newline
+  4. La emisión continúa hasta el comando \texttt{stop} o el tiempo
+  configurado. \newline
+  5. La ESP32 emite ``Deauthentication finalizado, frames emitidos: N''.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - PMF activo en la víctima:} Si el router tiene 802.11w
+  (PMF) activado, los deauths son ignorados. La fase termina pero el
+  efecto es nulo. Esto se reporta por consola si se detecta. \newline
+  \textbf{A2 - Detención manual:} El Operador envía \texttt{stop} antes
+  del tiempo configurado.
+}
+\ucrow{Notas}{
+  Para el laboratorio WARDEN, el router se configura sin PMF para
+  garantizar que el ataque funcione.
+}
+\end{uctable}
+
+\subsection{UC-04: Ejecutar Evil Twin individualmente}
+
+\begin{uctable}
+\ucrow{ID}{UC-04}
+\ucrow{Nombre}{Ejecutar Evil Twin individualmente}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Operador de la Víctima}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-002, RF-OFF-007, RF-OFF-008, RF-OFF-009, RF-OFF-010, RF-OFF-011, RF-OFF-012}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada con el firmware cargado. \newline
+  (2) El SSID legítimo a clonar está configurado.
+}
+\ucrow{Postcondiciones}{
+  El Evil Twin estuvo activo durante el tiempo configurado. Si una víctima
+  se conectó e ingresó credenciales, estas quedaron registradas con
+  marca de tiempo.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador envía el comando \texttt{eviltwin} por consola serial. \newline
+  2. La ESP32 emite ``Levantando Evil Twin con SSID
+  \texttt{LAB\_WARDEN\_UTP}''. \newline
+  3. La ESP32 inicia el AP abierto con el SSID configurado. \newline
+  4. La ESP32 inicia el servidor DHCP en la red interna del AP. \newline
+  5. La ESP32 inicia el servidor DNS que resuelve cualquier dominio a su
+  propia IP. \newline
+  6. La ESP32 inicia el servidor web que sirve el portal cautivo. \newline
+  7. La ESP32 espera conexiones. Por cada cliente que se conecta, emite
+  un mensaje ``Cliente conectado: \texttt{XX:XX:XX:XX:XX:XX} obtuvo IP
+  10.0.0.X''. \newline
+  8. Si un cliente envía credenciales por el portal, la ESP32 las imprime
+  en consola serial con marca de tiempo. \newline
+  9. La ESP32 mantiene el Evil Twin hasta el comando \texttt{stop} o el
+  tiempo configurado. \newline
+  10. Al finalizar, emite ``Evil Twin finalizado, conexiones: N,
+  credenciales capturadas: M''.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Ningún cliente se conecta:} El Evil Twin termina con N=0
+  y M=0. \newline
+  \textbf{A2 - Cliente se conecta pero no ingresa credenciales:} El Evil
+  Twin termina con N>0 y M=0. \newline
+  \textbf{A3 - Detención manual:} El Operador envía \texttt{stop}.
+}
+\ucrow{Notas}{
+  Las credenciales se almacenan únicamente en memoria volátil (RNF-SYS-005).
+  La página servida tiene el aviso de demostración educativa visible
+  (RF-OFF-011, RNF-SYS-007).
+}
+\end{uctable}
+
+\subsection{UC-05: Detener ataque en curso}
+
+\begin{uctable}
+\ucrow{ID}{UC-05}
+\ucrow{Nombre}{Detener ataque en curso}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-013}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) Hay una fase de la cadena ofensiva en ejecución (UC-01, UC-02,
+  UC-03 o UC-04 activo).
+}
+\ucrow{Postcondiciones}{
+  La fase en curso ha terminado de forma controlada, liberando recursos
+  (modo AP, servidores, emisión de frames).
+}
+\ucrow{Flujo Principal}{
+  1. El Operador envía el comando \texttt{stop} por consola serial o
+  presiona el botón físico de detención. \newline
+  2. La ESP32 detecta la señal y detiene la emisión de frames o el AP. \newline
+  3. La ESP32 cierra los servidores activos (DHCP, DNS, web) si están
+  corriendo. \newline
+  4. La ESP32 emite ``Detención solicitada, recursos liberados''. \newline
+  5. La ESP32 vuelve al estado de espera de comandos.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - No hay ataque activo:} La ESP32 ignora el comando y emite
+  ``Ningún ataque activo''.
+}
+\ucrow{Notas}{
+  Este caso de uso es indispensable como mecanismo de seguridad para
+  detener la operación si algo sale mal.
+}
+\end{uctable}
+
+\subsection{UC-06: Configurar BSSID objetivo}
+
+\begin{uctable}
+\ucrow{ID}{UC-06}
+\ucrow{Nombre}{Configurar BSSID objetivo}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-006, RNF-SYS-004}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada con el firmware cargado.
+}
+\ucrow{Postcondiciones}{
+  El BSSID objetivo queda almacenado en la configuración de la ESP32 y
+  será utilizado por las fases subsiguientes.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador envía por consola serial el comando \texttt{set bssid
+  XX:XX:XX:XX:XX:XX}. \newline
+  2. La ESP32 valida el formato del BSSID. \newline
+  3. La ESP32 valida que el BSSID no esté en una lista negra de
+  redes externas conocidas (validación de seguridad RNF-SYS-004). \newline
+  4. La ESP32 guarda el BSSID en memoria. \newline
+  5. La ESP32 confirma ``BSSID objetivo configurado:
+  \texttt{XX:XX:XX:XX:XX:XX}''.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - BSSID con formato inválido:} La ESP32 rechaza el comando y
+  emite ``Error: formato de BSSID inválido''. \newline
+  \textbf{A2 - BSSID en lista negra:} La ESP32 rechaza el comando y emite
+  ``Error: BSSID corresponde a una red externa, configuración rechazada''.
+}
+\ucrow{Notas}{
+  La validación A2 es una restricción ética codificada en el firmware
+  para garantizar que el ataque solo se dirija a redes del laboratorio.
+}
+\end{uctable}
+
+% ==============================================================================
+\section{Fichas Detalladas: Panel del Atacante}
+% ==============================================================================
+
+\subsection{UC-13: Reconocer redes WiFi cercanas desde el Panel del Atacante}
+
+\begin{uctable}
+\ucrow{ID}{UC-13}
+\ucrow{Nombre}{Reconocer redes WiFi cercanas desde el Panel del Atacante}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Panel del Atacante (frontend)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-016, RF-OFF-017, RF-PAT-001, RF-PAT-002, RF-PAT-003}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) La ESP32 está alimentada con el firmware cargado y en modo control. \newline
+  (2) La laptop del Operador está conectada a la red WiFi
+  \texttt{WARDEN\_CONTROL} servida por la ESP32. \newline
+  (3) El Operador tiene abierto el Panel del Atacante en su navegador.
+}
+\ucrow{Postcondiciones}{
+  El Operador ha visualizado la lista de redes WiFi cercanas y ha
+  seleccionado una como objetivo. La selección queda guardada en el
+  estado del Panel para los siguientes casos de uso.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador abre el Panel del Atacante en su navegador. \newline
+  2. El Panel verifica la conectividad con la ESP32 (\texttt{GET /status}). \newline
+  3. El Operador presiona el botón ``Escanear redes''. \newline
+  4. El Panel envía \texttt{GET /scan} a la ESP32. \newline
+  5. La ESP32 ejecuta un escaneo activo en la banda 2.4 GHz durante
+  aproximadamente 10 segundos. \newline
+  6. La ESP32 retorna en JSON la lista de redes con SSID, BSSID, canal,
+  RSSI y cifrado. \newline
+  7. El Panel renderiza la lista en una tabla ordenada por RSSI
+  descendente. \newline
+  8. El Operador identifica visualmente la red de laboratorio
+  \texttt{LAB\_WARDEN\_UTP} (idealmente la de mayor RSSI). \newline
+  9. El Operador hace clic en el botón ``Seleccionar'' de esa fila. \newline
+  10. El Panel muestra los datos de la red seleccionada en una sección
+  destacada y habilita el siguiente paso del flujo (UC-14).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - ESP32 no responde:} El Panel muestra ``Error de conexión
+  con la ESP32'' y sugiere verificar la red \texttt{WARDEN\_CONTROL}. \newline
+  \textbf{A2 - Escaneo sin resultados:} El Panel muestra ``No se
+  encontraron redes en el rango. Verifique que el router de
+  laboratorio esté encendido y dentro del alcance''.
+}
+\ucrow{Notas}{
+  El escaneo activo emite probe requests; esto es comportamiento normal
+  de cualquier cliente WiFi y no constituye un ataque.
+}
+\end{uctable}
+
+\subsection{UC-14: Reconocer clientes asociados a una red e identificar fabricantes}
+
+\begin{uctable}
+\ucrow{ID}{UC-14}
+\ucrow{Nombre}{Reconocer clientes asociados a una red e identificar fabricantes}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Panel del Atacante (frontend)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-018, RF-OFF-019, RF-OFF-024, RF-PAT-004, RF-PAT-005, RF-PAT-006}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) UC-13 completado: hay una red objetivo seleccionada en el Panel. \newline
+  (2) Hay al menos un dispositivo víctima conectado a la red objetivo
+  generando tráfico (idealmente, el celular Redmi Note 7 o la Dell
+  Latitude E6220 navegando o consumiendo datos).
+}
+\ucrow{Postcondiciones}{
+  El Operador ha visualizado la lista de clientes detectados, su
+  fabricante por OUI, y ha seleccionado una MAC como víctima. La
+  selección queda en el estado del Panel.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador presiona ``Detectar clientes''. \newline
+  2. El Panel envía
+  \texttt{GET /clients?bssid=XX:XX:XX:XX:XX:XX} a la ESP32. \newline
+  3. La ESP32 captura pasivamente frames dirigidos al BSSID indicado
+  durante un intervalo configurable (típicamente 30 segundos),
+  acumulando las MACs origen distintas. \newline
+  4. La ESP32 retorna en JSON la lista de MACs detectadas y el conteo
+  de frames observados de cada una. \newline
+  5. Para cada MAC de la lista, el Panel ejecuta
+  \texttt{GET /oui-lookup?mac=...} contra la ESP32. \newline
+  6. La ESP32 consulta su base de datos OUI local y retorna el
+  fabricante asociado. \newline
+  7. El Panel renderiza una tabla con MAC, fabricante, conteo de frames
+  y un botón ``Seleccionar como víctima'' por fila. \newline
+  8. El Operador identifica visualmente la víctima esperada (por ejemplo,
+  fabricante ``Xiaomi'' para el Redmi Note 7) y la selecciona. \newline
+  9. El Panel muestra los datos de la víctima seleccionada y habilita el
+  siguiente paso del flujo (UC-15).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Sin clientes detectados:} El Panel sugiere prolongar la
+  ventana de captura o verificar que las víctimas estén generando
+  tráfico. \newline
+  \textbf{A2 - OUI desconocido:} Si la base local no contiene el OUI
+  consultado, la ESP32 retorna ``Fabricante desconocido'' y el Panel lo
+  muestra así. \newline
+  \textbf{A3 - El Operador conoce la MAC víctima:} El Operador puede
+  ingresar manualmente la MAC en un campo del Panel sin pasar por la
+  detección automática.
+}
+\ucrow{Notas}{
+  La identificación por OUI no determina el modelo exacto del dispositivo,
+  solo su fabricante. La inferencia humana del Operador (``este es mi
+  celular'') es necesaria para confirmar la víctima.
+}
+\end{uctable}
+
+\subsection{UC-15: Confirmar autorización ética del objetivo}
+
+\begin{uctable}
+\ucrow{ID}{UC-15}
+\ucrow{Nombre}{Confirmar autorización ética del objetivo}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{Panel del Atacante (frontend)}
+\ucrow{Requerimientos Cubiertos}{RF-PAT-007, RNF-SYS-004 (validación ética)}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) UC-13 y UC-14 completados: hay red objetivo y víctima seleccionadas. \newline
+  (2) El botón de lanzamiento del ataque permanece deshabilitado hasta
+  completar este caso de uso.
+}
+\ucrow{Postcondiciones}{
+  El Operador ha confirmado por escrito que el objetivo es propiedad del
+  equipo o cuenta con autorización del propietario. El botón de
+  lanzamiento queda habilitado.
+}
+\ucrow{Flujo Principal}{
+  1. El Panel presenta una pantalla intermedia con el resumen del ataque:
+  red objetivo, víctima seleccionada, fases que se ejecutarán. \newline
+  2. El Panel muestra un texto destacado: ``ADVERTENCIA: estás a punto
+  de lanzar un ataque WiFi contra el dispositivo X conectado a la red
+  Y. La ejecución de este ataque sobre dispositivos o redes no
+  autorizadas constituye un delito según la Ley 1273 de 2009.''. \newline
+  3. El Operador debe marcar explícitamente una casilla con el texto:
+  ``Confirmo que el objetivo del ataque es propiedad de mi equipo o
+  cuento con autorización explícita del propietario''. \newline
+  4. Una vez marcada la casilla, el Panel habilita el botón ``Lanzar
+  ataque'' (antes deshabilitado en gris). \newline
+  5. El Operador puede proceder a UC-16 o cancelar el flujo.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Cancelación:} El Operador presiona ``Cancelar'' y el
+  Panel vuelve a la pantalla de selección sin habilitar el botón de
+  lanzamiento. \newline
+  \textbf{A2 - Validador rechaza el BSSID:} Adicionalmente al
+  consentimiento del Operador, el firmware ejecuta el Validador Ético
+  (UC-06). Si el BSSID está en lista negra, la API rechaza el ataque
+  con código HTTP 403 incluso después de la confirmación.
+}
+\ucrow{Notas}{
+  Este caso de uso codifica la responsabilidad ética como parte
+  obligatoria del flujo. La doble verificación (consentimiento humano
+  en UI + validación técnica en firmware) refuerza el compromiso del
+  proyecto con el uso educativo.
+}
+\end{uctable}
+
+\subsection{UC-16: Lanzar ataque desde el Panel del Atacante}
+
+\begin{uctable}
+\ucrow{ID}{UC-16}
+\ucrow{Nombre}{Lanzar ataque desde el Panel del Atacante}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Panel del Atacante (frontend)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-020, RF-OFF-021, RF-OFF-025, RF-PAT-008, RF-PAT-012}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) UC-13, UC-14 y UC-15 completados. \newline
+  (2) El botón de lanzamiento está habilitado.
+}
+\ucrow{Postcondiciones}{
+  La ESP32 ha iniciado la cadena ofensiva contra la víctima
+  seleccionada. La transición a UC-17 (monitoreo) es inmediata.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador, opcionalmente, ajusta parámetros del ataque
+  (duraciones por fase, modo encadenado vs individual). \newline
+  2. El Operador presiona ``Lanzar ataque''. \newline
+  3. El Panel envía \texttt{POST /config} con la configuración resultante
+  (BSSID, MAC víctima, SSID a clonar, duraciones). \newline
+  4. La ESP32 valida la configuración (incluyendo Validador Ético) y
+  responde 200 OK o 403 Forbidden según corresponda. \newline
+  5. El Panel envía \texttt{POST /attack/start} con el modo de ataque
+  seleccionado. \newline
+  6. La ESP32 inicia la cadena ofensiva. \newline
+  7. El Panel transita automáticamente a la vista de monitoreo (UC-17).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Validador ético rechaza:} La ESP32 retorna 403, el
+  Panel muestra el mensaje de rechazo y vuelve a la pantalla de
+  selección. \newline
+  \textbf{A2 - Pérdida de conexión durante el envío:} El Panel muestra
+  ``No se recibió confirmación de la ESP32. Verifique manualmente el
+  estado por consola serial''.
+}
+\ucrow{Notas}{
+  Este es el último punto donde el Operador puede revisar la
+  configuración antes de la ejecución.
+}
+\end{uctable}
+
+\subsection{UC-17: Monitorear ataque en curso desde el Panel del Atacante}
+
+\begin{uctable}
+\ucrow{ID}{UC-17}
+\ucrow{Nombre}{Monitorear ataque en curso desde el Panel del Atacante}
+\ucrow{Actor Primario}{Operador del Atacante}
+\ucrow{Actores Secundarios}{ESP32 (sistema), Panel del Atacante (frontend)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-022, RF-OFF-023, RF-PAT-009, RF-PAT-010, RF-PAT-011, RF-PAT-013}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) UC-16 completado: hay un ataque en curso.
+}
+\ucrow{Postcondiciones}{
+  El Operador ha monitoreado el ataque hasta su finalización (por
+  detención manual o por completarse el tiempo configurado). El Panel
+  muestra el resumen final.
+}
+\ucrow{Flujo Principal}{
+  1. El Panel muestra la fase actual del ataque, los contadores en vivo
+  (beacons emitidos, deauths emitidos, clientes conectados) y un
+  cronómetro. \newline
+  2. El Panel se actualiza periódicamente (polling cada 1 segundo a
+  \texttt{GET /attack/status}, o stream por
+  \texttt{GET /events} si está disponible). \newline
+  3. Durante la fase 3 (Evil Twin), si llegan credenciales ficticias al
+  portal cautivo, el Panel las muestra inmediatamente en una sección
+  destacada (consultando \texttt{GET /credentials}). \newline
+  4. El botón ``DETENER ATAQUE'' permanece visible y prominente durante
+  toda la sesión. \newline
+  5. Al completarse la cadena (todas las fases terminadas), el Panel
+  muestra la pantalla de resumen post-ataque con duración total,
+  contadores finales y credenciales capturadas.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Detención manual:} El Operador presiona ``DETENER
+  ATAQUE''. El Panel envía \texttt{POST /attack/stop} y la cadena se
+  interrumpe. El resumen muestra ``Detenido manualmente''. \newline
+  \textbf{A2 - Pérdida temporal de conexión durante Evil Twin:}
+  Mientras la ESP32 ejecuta la fase 3, el WiFi
+  \texttt{WARDEN\_CONTROL} puede no estar disponible. El Panel muestra
+  ``Conexión con ESP32 temporalmente no disponible (fase Evil Twin
+  activa)'' y reconecta automáticamente al finalizar la fase. \newline
+  \textbf{A3 - Sin credenciales capturadas:} El resumen indica
+  ``Ninguna credencial capturada en el portal''.
+}
+\ucrow{Notas}{
+  La pérdida temporal de conectividad durante Evil Twin es esperada y
+  documentada. Durante esa fase la ESP32 dedica su radio al AP malicioso.
+}
+\end{uctable}
+% ==============================================================================
+
+\subsection{UC-07: Iniciar detección en captura en vivo}
+
+\begin{uctable}
+\ucrow{ID}{UC-07}
+\ucrow{Nombre}{Iniciar detección en captura en vivo}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Adaptador Panda PAU0B (sistema), Sistema Operativo Linux}
+\ucrow{Requerimientos Cubiertos}{RF-DEF-001, RF-DEF-003, RF-DEF-010, RF-DEF-014}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) El adaptador Panda está conectado y reconocido como \texttt{panda0}. \newline
+  (2) El adaptador está en modo monitor (Paso 4 del Manual de Laboratorio
+  ejecutado). \newline
+  (3) El BSSID y SSID protegidos están configurados como argumentos.
+}
+\ucrow{Postcondiciones}{
+  El detector está capturando frames y aplicando lógica de análisis. La
+  consola muestra alertas en tiempo real.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador ejecuta el detector con argumentos: \texttt{python3
+  detector.py --iface panda0 --channel 6 --bssid XX:XX:XX:XX:XX:XX
+  --ssid LAB\_WARDEN\_UTP}. \newline
+  2. El detector valida los argumentos y los muestra por consola. \newline
+  3. El detector inicia la captura llamando a Scapy con
+  \texttt{sniff(iface=panda0, ...)}. \newline
+  4. El detector procesa cada frame entrante aplicando los analizadores
+  de cada fase. \newline
+  5. Cuando un analizador identifica una firma de ataque, emite una
+  alerta por consola (UC-09).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Adaptador no en modo monitor:} El detector detecta el
+  modo incorrecto y emite ``Error: panda0 no está en modo monitor.
+  Ejecute primero los comandos del Manual de Laboratorio Paso 4''. \newline
+  \textbf{A2 - Adaptador no encontrado:} El detector emite ``Error:
+  interfaz panda0 no encontrada''. \newline
+  \textbf{A3 - Argumentos inválidos:} El detector muestra ayuda de uso y
+  termina.
+}
+\ucrow{Notas}{
+  La captura requiere privilegios de root o que el ejecutable de Python
+  tenga las capabilities apropiadas (\texttt{CAP\_NET\_RAW},
+  \texttt{CAP\_NET\_ADMIN}).
+}
+\end{uctable}
+
+\subsection{UC-08: Analizar archivo PCAP}
+
+\begin{uctable}
+\ucrow{ID}{UC-08}
+\ucrow{Nombre}{Analizar archivo PCAP}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Sistema de archivos}
+\ucrow{Requerimientos Cubiertos}{RF-DEF-002, RF-DEF-003, RNF-DEF-011}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) Existe un archivo PCAP previamente capturado. \newline
+  (2) El BSSID y SSID protegidos están configurados.
+}
+\ucrow{Postcondiciones}{
+  El detector ha procesado todos los frames del archivo y emitido las
+  alertas correspondientes a las firmas detectadas.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador ejecuta el detector con argumentos: \texttt{python3
+  detector.py --pcap captura.pcap --bssid XX:XX:XX:XX:XX:XX --ssid
+  LAB\_WARDEN\_UTP}. \newline
+  2. El detector verifica que el archivo existe y es legible. \newline
+  3. El detector procesa cada frame del archivo aplicando los
+  analizadores. \newline
+  4. Por cada firma detectada, emite una alerta. \newline
+  5. Al finalizar el archivo, emite el resumen de sesión (UC-10).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Archivo no existe:} El detector emite ``Error: archivo
+  captura.pcap no encontrado'' y termina. \newline
+  \textbf{A2 - Archivo corrupto:} El detector emite ``Error: archivo PCAP
+  corrupto o formato no soportado''.
+}
+\ucrow{Notas}{
+  Este caso de uso permite que los integrantes del equipo desarrollen y
+  prueben el detector sin necesidad de tener el adaptador Panda
+  conectado, usando capturas de referencia generadas previamente
+  (RF-SYS-002).
+}
+\end{uctable}
+
+\subsection{UC-09: Visualizar alertas en tiempo real}
+
+\begin{uctable}
+\ucrow{ID}{UC-09}
+\ucrow{Nombre}{Visualizar alertas en tiempo real}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Detector (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-DEF-008, RF-DEF-009, RF-DEF-007, RNF-DEF-002, RNF-DEF-004}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) El detector está en ejecución (UC-07 o UC-08 activo).
+}
+\ucrow{Postcondiciones}{
+  El Operador ha visto en consola las alertas correspondientes a los
+  ataques detectados.
+}
+\ucrow{Flujo Principal}{
+  1. El detector identifica una firma de ataque en el flujo de captura. \newline
+  2. El detector construye un mensaje de alerta con marca de tiempo ISO
+  8601, severidad, tipo de ataque y metadatos relevantes. \newline
+  3. El detector emite el mensaje por la salida estándar. \newline
+  4. El Operador lee el mensaje en su consola. \newline
+  5. Si tres alertas (Beacon Flood, Deauth, Evil Twin) ocurren en una
+  ventana temporal corta, el detector emite una alerta agregada de
+  ``Cadena ofensiva detectada''.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Falso positivo:} El Operador identifica que la alerta no
+  corresponde a un ataque real (típicamente un AP vecino con SSID
+  parecido). El detector permite agregar a lista blanca (RF-DEF-015) en
+  ejecuciones futuras.
+}
+\ucrow{Notas}{
+  El formato de alerta es legible directamente por humanos. Ejemplo: \newline
+  \texttt{[2026-04-25T14:23:01] [ALERT] EVIL\_TWIN BSSID
+  AA:BB:CC:DD:EE:FF announces SSID LAB\_WARDEN\_UTP, but protected BSSID
+  is XX:XX:XX:XX:XX:XX.}
+}
+\end{uctable}
+
+\subsection{UC-10: Finalizar sesión de detección}
+
+\begin{uctable}
+\ucrow{ID}{UC-10}
+\ucrow{Nombre}{Finalizar sesión de detección}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Detector (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-DEF-012, RF-DEF-013}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) El detector está en ejecución.
+}
+\ucrow{Postcondiciones}{
+  El detector ha emitido un resumen de sesión y ha liberado los recursos
+  (interfaz de captura, búferes, etc.).
+}
+\ucrow{Flujo Principal}{
+  1. El Operador presiona Ctrl+C en la consola. \newline
+  2. El detector intercepta la señal SIGINT. \newline
+  3. El detector detiene la captura de Scapy. \newline
+  4. El detector calcula el resumen: duración total, conteo de alertas
+  por tipo (Beacon Flood, Deauth, Evil Twin, Cadena), conteo de frames
+  procesados. \newline
+  5. El detector imprime el resumen por consola. \newline
+  6. El detector termina con código de salida 0.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Finalización por fin de PCAP:} En modo UC-08, la sesión
+  termina automáticamente al procesar el último frame del archivo. El
+  resumen se emite igual.
+}
+\ucrow{Notas}{
+  El manejo correcto de SIGINT es obligatorio para no dejar la interfaz
+  en estado inconsistente.
+}
+\end{uctable}
+
+% ==============================================================================
+\section{Fichas Detalladas: Panel del Defensor}
+% ==============================================================================
+
+\subsection{UC-18: Iniciar el Panel del Defensor}
+
+\begin{uctable}
+\ucrow{ID}{UC-18}
+\ucrow{Nombre}{Iniciar el Panel del Defensor}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Servidor FastAPI (sistema), Adaptador Panda PAU0B (hardware)}
+\ucrow{Requerimientos Cubiertos}{RF-PDE-001, RF-PDE-002, RF-PDE-004, RF-PDE-008}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) El adaptador Panda está conectado y reconocido como
+  \texttt{panda0}. \newline
+  (2) Las dependencias Python (FastAPI, Uvicorn, Scapy) están
+  instaladas. \newline
+  (3) El BSSID y SSID protegidos están disponibles para configurar.
+}
+\ucrow{Postcondiciones}{
+  El servidor FastAPI está corriendo en \texttt{localhost:8000}, el
+  detector está integrado y listo para iniciar captura, el navegador
+  muestra el Panel del Defensor.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador ejecuta \texttt{python3 -m warden.defender.web} en su
+  terminal. \newline
+  2. El servidor FastAPI inicia en el puerto 8000 e imprime la URL de
+  acceso. \newline
+  3. El Operador abre \texttt{http://localhost:8000} en su
+  navegador. \newline
+  4. El Panel carga la pantalla principal mostrando el estado del
+  detector (``Detenido''), un formulario de configuración (interfaz,
+  canal, BSSID protegido, SSID protegido) y un botón ``Iniciar
+  detección''. \newline
+  5. El Operador ingresa los parámetros de configuración (o acepta los
+  valores por defecto cargados del archivo de configuración). \newline
+  6. El Operador presiona ``Iniciar detección''. \newline
+  7. El servidor verifica que la interfaz esté en modo monitor; si no,
+  muestra error sugiriendo ejecutar el procedimiento del Manual de
+  Laboratorio. \newline
+  8. El servidor inicia el detector en un hilo de fondo y abre la
+  conexión WebSocket con el frontend. \newline
+  9. El Panel cambia el indicador de estado a ``Corriendo'' y muestra el
+  indicador visual de amenaza en verde. \newline
+  10. El Panel transita a la vista de monitoreo (UC-19).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Puerto 8000 ocupado:} El servidor falla al arrancar; el
+  Operador puede pasar argumento \texttt{--port} para usar otro
+  puerto. \newline
+  \textbf{A2 - Adaptador no en modo monitor:} El servidor responde con
+  un mensaje de error en el Panel sugiriendo activar modo monitor
+  primero. \newline
+  \textbf{A3 - Configuración inválida (BSSID mal formado):} El Panel
+  muestra error de validación y conserva los valores ingresados para
+  corrección.
+}
+\ucrow{Notas}{
+  La integración del detector dentro del servidor FastAPI permite que
+  ambos compartan estado en memoria sin necesidad de comunicación
+  entre procesos. El detector original sigue ejecutándose como un
+  componente integrado.
+}
+\end{uctable}
+
+\subsection{UC-19: Visualizar amenazas detectadas en el Panel del Defensor}
+
+\begin{uctable}
+\ucrow{ID}{UC-19}
+\ucrow{Nombre}{Visualizar amenazas detectadas en el Panel del Defensor}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Detector (componente interno), Servidor FastAPI, WebSocket}
+\ucrow{Requerimientos Cubiertos}{RF-PDE-003, RF-PDE-005, RF-PDE-006, RF-PDE-007, RF-PDE-010, RNF-PDE-001, RNF-PDE-002}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) UC-18 completado: el Panel está activo y el detector corriendo.
+}
+\ucrow{Postcondiciones}{
+  El Operador ha visualizado las alertas en tiempo real y el indicador
+  visual ha reflejado el nivel de amenaza correspondiente.
+}
+\ucrow{Flujo Principal}{
+  1. El detector procesa frames y, al identificar una firma, construye
+  una alerta. \newline
+  2. El detector entrega la alerta al servidor FastAPI mediante el
+  patrón observador o cola interna. \newline
+  3. El servidor envía la alerta al frontend a través de la conexión
+  WebSocket establecida. \newline
+  4. El frontend recibe la alerta y la inserta al tope de la lista de
+  alertas, con animación de aparición. \newline
+  5. El frontend incrementa el contador agregado correspondiente al
+  tipo de alerta. \newline
+  6. El frontend evalúa el indicador visual: si la alerta es de tipo
+  \texttt{CADENA\_OFENSIVA}, el indicador se pone en rojo; si es la
+  primera alerta de cualquier otro tipo, el indicador transita de verde
+  a amarillo. \newline
+  7. El Operador observa visualmente el cambio de estado y la nueva
+  entrada en la lista. \newline
+  8. El Operador puede expandir cualquier alerta para ver sus
+  metadatos completos (BSSID, MAC origen, contadores).
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Pérdida de conexión WebSocket:} El frontend detecta la
+  desconexión, muestra ``Conexión perdida con el detector'' y reintenta
+  reconectarse cada 3 segundos. \newline
+  \textbf{A2 - Múltiples alertas simultáneas:} El frontend acumula las
+  alertas en el orden recibido y respeta el orden cronológico. \newline
+  \textbf{A3 - Alerta duplicada:} El detector ya implementa cooldown
+  por tipo de alerta, así que el frontend confía en la deduplicación
+  del backend.
+}
+\ucrow{Notas}{
+  La salida por consola estándar (RF-DEF-008) sigue activa en paralelo:
+  el Operador puede ver las mismas alertas tanto en el navegador como
+  en la terminal donde ejecuta el servidor.
+}
+\end{uctable}
+
+\subsection{UC-20: Reiniciar sesión desde el Panel del Defensor}
+
+\begin{uctable}
+\ucrow{ID}{UC-20}
+\ucrow{Nombre}{Reiniciar sesión desde el Panel del Defensor}
+\ucrow{Actor Primario}{Operador del Detector}
+\ucrow{Actores Secundarios}{Servidor FastAPI, Detector}
+\ucrow{Requerimientos Cubiertos}{RF-PDE-009}
+\ucrow{Prioridad}{Media}
+\ucrow{Precondiciones}{
+  (1) El Panel está activo (con o sin alertas previas).
+}
+\ucrow{Postcondiciones}{
+  La lista de alertas y los contadores agregados quedan limpios. El
+  detector sigue corriendo (no se detiene). El indicador visual vuelve
+  a verde.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador presiona el botón ``Reiniciar sesión'' en el Panel. \newline
+  2. El Panel muestra una confirmación: ``¿Limpiar todas las alertas y
+  contadores actuales? El detector seguirá corriendo''. \newline
+  3. El Operador confirma. \newline
+  4. El frontend envía
+  \texttt{POST /api/session/reset} al servidor. \newline
+  5. El servidor limpia los contadores y la cola de alertas en memoria. \newline
+  6. El servidor emite por WebSocket un evento de reset. \newline
+  7. El frontend limpia la lista visual de alertas, resetea los
+  contadores a cero y vuelve el indicador a verde.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Cancelación:} El Operador cancela el diálogo y la sesión
+  continúa intacta.
+}
+\ucrow{Notas}{
+  Este caso de uso es útil entre demostraciones consecutivas para
+  empezar con estado limpio sin reiniciar todo el servicio.
+}
+\end{uctable}
+
+% ==============================================================================
+\section{Fichas Detalladas: Víctima}
+% ==============================================================================
+
+\subsection{UC-11: Conectarse al Evil Twin e ingresar credenciales ficticias}
+
+\begin{uctable}
+\ucrow{ID}{UC-11}
+\ucrow{Nombre}{Conectarse al Evil Twin e ingresar credenciales ficticias}
+\ucrow{Actor Primario}{Operador de la Víctima}
+\ucrow{Actores Secundarios}{Dispositivo víctima (Redmi Note 7 o Dell Latitude E6220), ESP32 (sistema)}
+\ucrow{Requerimientos Cubiertos}{RF-OFF-007, RF-OFF-008, RF-OFF-010, RF-OFF-012, RNF-SYS-005, RNF-SYS-007}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) El Evil Twin está activo (UC-04 en curso). \newline
+  (2) El dispositivo víctima está dentro del rango de cobertura de la
+  ESP32. \newline
+  (3) El dispositivo víctima está desconectado del router legítimo (típicamente
+  por efecto previo de UC-03).
+}
+\ucrow{Postcondiciones}{
+  El dispositivo víctima ha completado el ciclo: conexión al Evil Twin,
+  visualización del portal cautivo, ingreso de credenciales ficticias y
+  envío del formulario. La ESP32 ha registrado las credenciales.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador de la Víctima abre la lista de redes WiFi en el
+  dispositivo. \newline
+  2. El Operador identifica la red \texttt{LAB\_WARDEN\_UTP} (sin
+  candado, abierta) y selecciona conectarse. \newline
+  3. El dispositivo obtiene IP por DHCP del Evil Twin. \newline
+  4. El sistema operativo del dispositivo (Android en el Redmi Note 7)
+  detecta la red abierta con portal cautivo y abre el portal
+  automáticamente, o el Operador navega a cualquier URL para
+  desencadenarlo. \newline
+  5. El dispositivo recibe la página HTML del portal cautivo. \newline
+  6. El Operador verifica el aviso visible de ``DEMOSTRACION EDUCATIVA''. \newline
+  7. El Operador ingresa las credenciales ficticias estándar definidas en
+  el Threat Model: \newline
+  \quad - Usuario: \texttt{demo.user@warden.test} \newline
+  \quad - Contraseña: \texttt{demo-password-12345} \newline
+  8. El Operador pulsa el botón de envío. \newline
+  9. El navegador envía un POST con los datos al servidor de la ESP32. \newline
+  10. La ESP32 registra las credenciales en consola serial con marca de
+  tiempo y dirección IP del cliente.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - El portal no se abre automáticamente:} El Operador abre
+  un navegador y va a una URL cualquiera. El DNS de la ESP32 redirige a
+  la página del portal. \newline
+  \textbf{A2 - El dispositivo no se conecta al Evil Twin:} Posibles
+  causas: el dispositivo prefiere reconectarse al router legítimo (si
+  está disponible), señal débil, o limitaciones del Android sobre redes
+  abiertas. El Operador puede ``olvidar'' la red legítima en la
+  configuración del dispositivo para forzar la conexión al Evil Twin. \newline
+  \textbf{A3 - Cancelación voluntaria:} El Operador puede cerrar el
+  portal sin enviar credenciales. La fase termina sin captura.
+}
+\ucrow{Notas}{
+  Bajo ninguna circunstancia se ingresan credenciales reales en este
+  caso de uso. Las credenciales ficticias estándar están definidas en el
+  Threat Model como activos demostrativos del proyecto.
+}
+\end{uctable}
+
+% ==============================================================================
+\section{Fichas Detalladas: Sistema Completo}
+% ==============================================================================
+
+\subsection{UC-12: Ejecutar demostración end-to-end}
+
+\begin{uctable}
+\ucrow{ID}{UC-12}
+\ucrow{Nombre}{Ejecutar demostración end-to-end}
+\ucrow{Actor Primario}{Operador del Atacante (coordinador)}
+\ucrow{Actores Secundarios}{Operador del Detector, Operador de la Víctima, Observador (profesor evaluador)}
+\ucrow{Requerimientos Cubiertos}{RF-SYS-001, todos los RF cubiertos por UC-01 a UC-11}
+\ucrow{Prioridad}{Alta}
+\ucrow{Precondiciones}{
+  (1) Todos los componentes físicos del laboratorio están desplegados:
+  router de laboratorio, dispositivos víctima, ESP32 con firmware,
+  laptop detector con Panda. \newline
+  (2) Las víctimas están conectadas al router legítimo. \newline
+  (3) El Panda está en modo monitor en el canal del router. \newline
+  (4) El detector está iniciado y esperando.
+}
+\ucrow{Postcondiciones}{
+  La cadena ofensiva completa fue ejecutada y el detector identificó
+  cada fase, así como la cadena agregada. Las credenciales ficticias de
+  demostración fueron capturadas. El Observador presenció la sesión.
+}
+\ucrow{Flujo Principal}{
+  1. El Operador del Detector ejecuta UC-07 (iniciar detección). El
+  detector queda escuchando. \newline
+  2. El Observador verifica que el detector está activo y que la línea
+  base de tráfico está limpia (sin alertas espurias). \newline
+  3. El Operador del Atacante ejecuta UC-01 (iniciar cadena automática). \newline
+  4. La ESP32 inicia la fase 1 (Beacon Flooding). \newline
+  5. El detector identifica la firma de Beacon Flooding y emite la
+  alerta correspondiente (UC-09). \newline
+  6. La ESP32 transita a la fase 2 (Deauthentication). \newline
+  7. El detector identifica el deauth y emite la alerta correspondiente. \newline
+  8. La víctima Redmi Note 7 se desconecta del router legítimo. \newline
+  9. La ESP32 transita a la fase 3 (Evil Twin). \newline
+  10. El detector identifica el Evil Twin y emite la alerta
+  correspondiente. \newline
+  11. El Operador de la Víctima ejecuta UC-11 (conectarse e ingresar
+  credenciales ficticias). \newline
+  12. La ESP32 captura las credenciales y las muestra por consola
+  serial. \newline
+  13. El detector emite la alerta agregada de ``Cadena ofensiva
+  detectada'' tras correlacionar las tres fases. \newline
+  14. El Operador del Atacante deja terminar la cadena o invoca UC-05. \newline
+  15. El Operador del Detector ejecuta UC-10 (finalizar sesión y ver
+  resumen). \newline
+  16. El Observador revisa los logs de ambos lados y verifica que la
+  cadena ofensiva y la detección coinciden temporalmente.
+}
+\ucrow{Flujos Alternos}{
+  \textbf{A1 - Falla parcial de detección:} Si el detector pierde alguna
+  fase, las demás se reportan normalmente. La cadena agregada solo se
+  emite si las tres fases fueron detectadas. \newline
+  \textbf{A2 - Falla del Evil Twin:} Si la víctima no se conecta al Evil
+  Twin (flujo alterno A2 de UC-11), la fase 3 termina sin captura. La
+  cadena se considera ejecutada igualmente; solo el resultado final
+  cambia. \newline
+  \textbf{A3 - Detención de emergencia:} Si algo sale mal (por ejemplo,
+  un dispositivo ajeno se ve afectado), cualquier Operador puede
+  invocar UC-05 y la demostración se aborta. Esto se documenta en la
+  bitácora de la sesión (RF-SYS-005).
+}
+\ucrow{Notas}{
+  Este es el caso de uso más importante del proyecto: corresponde a la
+  demostración que los evaluadores presenciarán durante la entrega
+  académica. Su éxito determina la aceptación del sistema según los
+  criterios definidos en el SRS.
+}
+\end{uctable}
+
+% ==============================================================================
+\section{Trazabilidad: Casos de Uso a Requerimientos}
+% ==============================================================================
+
+\begin{datatable}{L{1.5cm} L{14cm}}{Caso de Uso & Requerimientos del SRS Cubiertos}
+\drow{UC-01 & RF-OFF-001, RF-OFF-014, RF-OFF-015}
+\drow{UC-02 & RF-OFF-002, RF-OFF-003, RF-OFF-004}
+\drow{UC-03 & RF-OFF-002, RF-OFF-005, RF-OFF-006}
+\drow{UC-04 & RF-OFF-002, RF-OFF-007, RF-OFF-008, RF-OFF-009, RF-OFF-010, RF-OFF-011, RF-OFF-012}
+\drow{UC-05 & RF-OFF-013}
+\drow{UC-06 & RF-OFF-006, RNF-SYS-004}
+\drow{UC-07 & RF-DEF-001, RF-DEF-003, RF-DEF-010, RF-DEF-014}
+\drow{UC-08 & RF-DEF-002, RF-DEF-003, RNF-DEF-011}
+\drow{UC-09 & RF-DEF-007, RF-DEF-008, RF-DEF-009, RNF-DEF-002, RNF-DEF-004}
+\drow{UC-10 & RF-DEF-012, RF-DEF-013}
+\drow{UC-11 & RF-OFF-007, RF-OFF-008, RF-OFF-010, RF-OFF-012, RNF-SYS-005, RNF-SYS-007}
+\drow{UC-12 & RF-SYS-001 (y todos los RF cubiertos por UC-01 a UC-11)}
+\drow{UC-13 & RF-OFF-016, RF-OFF-017, RF-PAT-001, RF-PAT-002, RF-PAT-003}
+\drow{UC-14 & RF-OFF-018, RF-OFF-019, RF-OFF-024, RF-PAT-004, RF-PAT-005, RF-PAT-006}
+\drow{UC-15 & RF-PAT-007, RNF-SYS-004}
+\drow{UC-16 & RF-OFF-020, RF-OFF-021, RF-OFF-025, RF-PAT-008, RF-PAT-012}
+\drow{UC-17 & RF-OFF-022, RF-OFF-023, RF-PAT-009, RF-PAT-010, RF-PAT-011, RF-PAT-013}
+\drow{UC-18 & RF-PDE-001, RF-PDE-002, RF-PDE-004, RF-PDE-008}
+\drow{UC-19 & RF-PDE-003, RF-PDE-005, RF-PDE-006, RF-PDE-007, RF-PDE-010, RNF-PDE-001, RNF-PDE-002}
+\drow{UC-20 & RF-PDE-009}
+\end{datatable}
+
+\end{document}

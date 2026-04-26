@@ -1,0 +1,1163 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Documento de Arquitectura}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Daniel Yadir Perea Murillo}{Borrador inicial}
+\revrow{0.1}{Abril 2026}{Sofia Valdez Londono}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento describe la arquitectura de software del sistema WARDEN.
+Proporciona una vista de alto nivel de cómo está estructurado el sistema,
+qué componentes lo conforman, cómo se relacionan entre sí, y qué
+decisiones arquitectónicas se tomaron junto con su justificación.
+
+Este documento se ubica entre la Especificación de Requerimientos (SRS) y
+el Documento de Diseño Detallado: parte de los requerimientos y casos de
+uso para definir la estructura general del sistema, sin entrar al detalle
+de implementación de cada componente.
+
+\subsection{Audiencia}
+Este documento está dirigido a:
+
+\begin{itemize}
+  \item Los integrantes del equipo de desarrollo, como referencia para
+    organizar la implementación.
+  \item El profesor evaluador, como evidencia del análisis arquitectónico
+    realizado.
+  \item Cualquier persona que requiera entender la estructura interna de
+    WARDEN sin leer el código fuente.
+\end{itemize}
+
+\subsection{Alcance}
+El documento cubre las cinco vistas arquitectónicas del modelo 4+1 de
+Kruchten, adaptadas al contexto del proyecto:
+
+\begin{itemize}
+  \item Vista Lógica
+  \item Vista de Procesos
+  \item Vista de Despliegue (Física)
+  \item Vista de Desarrollo
+  \item Vista de Escenarios
+\end{itemize}
+
+Adicionalmente incluye un registro de decisiones arquitectónicas (ADR)
+con las decisiones más relevantes tomadas durante el diseño.
+
+\subsection{Modelo de Arquitectura Utilizado}
+Se utiliza el modelo de \textbf{4+1 Vistas Arquitectónicas} propuesto por
+Philippe Kruchten (1995). Este modelo es ampliamente aceptado en la
+industria y la academia para documentar arquitecturas de software porque
+permite describir el sistema desde perspectivas complementarias, cada una
+relevante para una audiencia distinta.
+
+\begin{datatable}{L{3.5cm} L{12cm}}{Vista & Pregunta que responde}
+\drow{Lógica       & ¿Qué hace el sistema? ¿Cuáles son sus componentes funcionales?}
+\drow{Procesos     & ¿Cómo opera el sistema en tiempo de ejecución? ¿Qué hilos, eventos, comunicaciones existen?}
+\drow{Despliegue   & ¿Dónde corre cada componente? ¿Qué hardware lo soporta?}
+\drow{Desarrollo   & ¿Cómo está organizado el código fuente? ¿Cómo se compila y se versiona?}
+\drow{Escenarios   & ¿Cómo trabajan las cuatro vistas juntas en casos de uso concretos?}
+\end{datatable}
+
+\subsection{Referencias}
+\begin{itemize}
+  \item Documento WARDEN \emph{Documento de Visión}.
+  \item Documento WARDEN \emph{Especificación de Requerimientos de Software}.
+  \item Documento WARDEN \emph{Documento de Casos de Uso}.
+  \item Documento WARDEN \emph{Threat Model y Cadena de Ataque}.
+  \item Kruchten, P. (1995). \emph{The 4+1 View Model of Architecture}.
+    IEEE Software 12(6).
+\end{itemize}
+
+% ==============================================================================
+\section{Visión General del Sistema}
+% ==============================================================================
+
+WARDEN es un sistema distribuido en pequeña escala compuesto por dos
+subsistemas funcionalmente independientes que se comunican exclusivamente
+a través del medio inalámbrico (radiofrecuencia 2.4 GHz). No existe
+comunicación digital directa entre ellos: el subsistema ofensivo emite
+frames 802.11 al aire, y el subsistema defensivo los captura pasivamente.
+
+\subsection{Bloques principales}
+
+\vspace{0.3cm}
+\begin{verbatim}
++================================================================+
+|                      SISTEMA WARDEN                            |
+|                                                                |
+|  +--------------------------+   +--------------------------+   |
+|  |   SUBSISTEMA OFENSIVO    |   |   SUBSISTEMA DEFENSIVO   |   |
+|  |   (Firmware ESP32)       |   |   (Detector Python)      |   |
+|  |                          |   |                          |   |
+|  |  +--------------------+  |   |  +--------------------+  |   |
+|  |  | Controlador de     |  |   |  | Capturador de      |  |   |
+|  |  | Cadena             |  |   |  | Frames             |  |   |
+|  |  +--------------------+  |   |  +--------------------+  |   |
+|  |  | Modulo Beacon Flood|  |   |  | Analizador Beacon  |  |   |
+|  |  +--------------------+  |   |  +--------------------+  |   |
+|  |  | Modulo Deauth      |  |   |  | Analizador Deauth  |  |   |
+|  |  +--------------------+  |   |  +--------------------+  |   |
+|  |  | Modulo Evil Twin   |  |   |  | Analizador EvilTwin|  |   |
+|  |  | + Portal Cautivo   |  |   |  +--------------------+  |   |
+|  |  +--------------------+  |   |  | Correlador de      |  |   |
+|  |  | Interfaz Serial    |  |   |  | Cadena             |  |   |
+|  |  +--------------------+  |   |  +--------------------+  |   |
+|  |                          |   |  | Reporte / Alertas  |  |   |
+|  |                          |   |  +--------------------+  |   |
+|  +-----------+--------------+   +-----------+--------------+   |
+|              |                              |                  |
+|              v                              ^                  |
+|       +--------------+                +--------------+         |
+|       |  Antena RF   |  ===========>  |  Antena RF   |         |
+|       |  (Tx Frames) |   2.4 GHz aire |  (Rx Frames) |         |
+|       +--------------+                +--------------+         |
+|              |                              |                  |
+|              v                              |                  |
+|     +-----------------+                     |                  |
+|     | Router de Lab + |                     |                  |
+|     | Victimas        |                     |                  |
+|     +-----------------+                     |                  |
+|                                                                |
++================================================================+
+\end{verbatim}
+
+\subsection{Principios arquitectónicos rectores}
+La arquitectura de WARDEN se rige por cinco principios:
+
+\begin{enumerate}
+  \item \textbf{Independencia funcional.} Cada subsistema puede
+    desarrollarse, probarse y operarse de forma autónoma.
+  \item \textbf{Comunicación exclusiva por aire.} No hay canales
+    digitales (USB, Ethernet, sockets) entre los subsistemas. Toda
+    interacción ocurre a través de frames 802.11.
+  \item \textbf{Modularidad por fase de ataque.} Cada uno de los tres
+    ataques (Beacon Flood, Deauth, Evil Twin) corresponde a un módulo
+    independiente tanto en el lado ofensivo como en el defensivo.
+  \item \textbf{Pasividad defensiva absoluta.} El subsistema defensivo
+    nunca emite frames al medio. Su única operación es lectura.
+  \item \textbf{Configuración externa.} Tanto umbrales como
+    identificadores (BSSID protegido, canal, etc.) están fuera del
+    código y pueden modificarse sin recompilación.
+\end{enumerate}
+
+% ==============================================================================
+\section{Vista Lógica}
+% ==============================================================================
+
+La vista lógica describe los componentes funcionales del sistema y sus
+responsabilidades. Está organizada por subsistema.
+
+\subsection{Subsistema Ofensivo: Firmware ESP32}
+
+\subsubsection{Componentes lógicos}
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Componente & Responsabilidad}
+\drow{Controlador de Cadena       & Coordina la ejecución secuencial de las tres fases en modo automático y la activación individual en modo manual. Mantiene el estado actual de la cadena (idle, fase 1, 2, 3, finalizado).}
+\drow{Módulo Beacon Flood          & Genera y emite los beacons falsos durante la fase 1. Encapsula la lógica de generación de SSIDs y BSSIDs falsos, formato de frames de gestión, y temporización.}
+\drow{Módulo Deauth                & Construye y emite los frames de deauthentication durante la fase 2. Encapsula la suplantación del BSSID legítimo y la temporización del envío.}
+\drow{Módulo Evil Twin             & Configura y opera el AP malicioso durante la fase 3. Coordina internamente cuatro subcomponentes: AP, servidor DHCP, servidor DNS, servidor web del portal cautivo.}
+\drow{Portal Cautivo               & Subcomponente del Evil Twin. Sirve la página HTML, procesa los formularios POST, y registra credenciales recibidas.}
+\drow{Servidor DNS local           & Subcomponente del Evil Twin. Responde a todas las consultas DNS con la IP del propio AP.}
+\drow{Servidor DHCP                & Subcomponente del Evil Twin. Asigna IPs en el rango 10.0.0.10-50 a los clientes que se conectan.}
+\drow{Interfaz Serial              & Recibe comandos del Operador del Atacante por consola serial y emite logs de estado. Mecanismo de control secundario y de diagnóstico, complementario al Panel del Atacante.}
+\drow{AP de Control                & Levanta la red WiFi \texttt{WARDEN\_CONTROL} (IP fija \texttt{192.168.4.1}) cuando la ESP32 no está ejecutando un ataque. Sirve como puerta de entrada para que la laptop del Operador acceda a la API REST.}
+\drow{Servidor API REST            & Servidor HTTP que expone los endpoints \texttt{/scan}, \texttt{/clients}, \texttt{/oui-lookup}, \texttt{/attack/*}, \texttt{/config}, \texttt{/credentials} y \texttt{/events}. Recibe peticiones del Panel del Atacante y traduce a invocaciones del Controlador de Cadena, el Reconocedor o la Configuración.}
+\drow{Reconocedor                  & Implementa las funciones de escaneo activo de redes (\texttt{/scan}) y captura pasiva de clientes asociados a un BSSID (\texttt{/clients}). No participa en la cadena ofensiva; solo provee información para que el Operador seleccione objetivos.}
+\drow{Lookup OUI                   & Resuelve direcciones MAC a fabricantes consultando una base de datos local embebida en flash. Consultado por el endpoint \texttt{/oui-lookup}.}
+\drow{Configuración                & Almacena los parámetros operativos en memoria: BSSID objetivo, MAC víctima, SSID a clonar, canal, duraciones de fase. Cargada al arranque desde valores por defecto, modificable por consola serial o por API REST.}
+\drow{Validador Ético              & Verifica que el BSSID objetivo configurado no esté en una lista negra de redes externas. Aplica al cambio de configuración tanto desde la consola serial (UC-06) como desde la API (UC-15, UC-16).}
+\end{datatable}
+
+\subsubsection{Diagrama de componentes del subsistema ofensivo}
+
+\vspace{0.3cm}
+\begin{verbatim}
+   Panel del Atacante (frontend, fuera de ESP32)
+                 |
+                 | HTTP/JSON via WARDEN_CONTROL
+                 v
+       +-------------------+      +---------------------+
+       |  AP de Control    | <--> |  Servidor API REST  |
+       |  WARDEN_CONTROL   |      |  (endpoints)        |
+       |  192.168.4.1      |      +----+--------+-------+
+       +-------------------+           |        |
+                                       |        |
+   +---------------------+ <-----------+        |
+   |  Interfaz Serial    | <-- Operador (CLI)   |
+   +----------+----------+                      |
+              |                                 |
+              v                                 v
+    +---------+---------------------------------+--------+
+    |         Controlador de Cadena                       |
+    |        (estado: idle | f1 | f2 | f3)                |
+    +-----+---------+---------+--------+------------------+
+          |         |         |        |          |
+          v         v         v        v          v
+    +---------+ +-------+ +---------+ +---------+ +-------+
+    | Modulo  | |Modulo | | Modulo  | |Reconoce-| |Lookup |
+    | Beacon  | |Deauth | | Evil    | |dor      | |OUI    |
+    | Flood   | |       | | Twin    | |(scan,   | |(MAC-> |
+    +---------+ +-------+ +-+--+--+-+ |clients) | |fabri- |
+                            |  |  |   +---------+ |cante) |
+                            v  v  v               +-------+
+                          DHCP DNS Portal
+                                   Cautivo
+
+       +------------------+
+       | Configuracion    | <-- accedida por todos los modulos
+       +------------------+
+       | Validador Etico  | <-- valida cambios de BSSID
+       +------------------+      (desde Serial o API)
+\end{verbatim}
+
+\subsection{Subsistema Defensivo: Detector Python}
+
+\subsubsection{Componentes lógicos}
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Componente & Responsabilidad}
+\drow{Capturador de Frames        & Abstrae la fuente de paquetes (interfaz en vivo o archivo PCAP). Entrega frames parseados al pipeline de análisis. Encapsula las llamadas a Scapy.}
+\drow{Despachador                  & Recibe cada frame del Capturador y lo enruta al o los analizadores correspondientes según su tipo (beacon, deauth, etc.).}
+\drow{Analizador Beacon Flood     & Mantiene una ventana móvil de tiempo y cuenta beacons únicos por segundo. Emite alerta cuando la tasa supera el umbral configurado.}
+\drow{Analizador Deauth            & Cuenta frames de deauth dirigidos al BSSID protegido en una ventana temporal. Emite alerta cuando supera el umbral.}
+\drow{Analizador Evil Twin         & Mantiene un registro de SSID-BSSID conocidos. Emite alerta cuando aparece un beacon con el SSID protegido pero un BSSID distinto al protegido.}
+\drow{Correlador de Cadena         & Recibe alertas de los tres analizadores y mantiene una ventana temporal donde verifica si las tres fases ocurren en secuencia. Si sí, emite una alerta agregada de cadena.}
+\drow{Reporte / Alertas            & Recibe las alertas de los analizadores y del correlador, las formatea con marca de tiempo y severidad, y las emite tanto por consola estándar como hacia el WebSocket Manager.}
+\drow{Servidor FastAPI             & Servidor HTTP/ASGI que sirve el frontend del Panel del Defensor (HTML estático), expone endpoints internos (\texttt{/api/session/reset}, \texttt{/api/status}, \texttt{/api/config}) y mantiene el endpoint WebSocket \texttt{/ws}. Integra el detector como componente interno.}
+\drow{WebSocket Manager            & Mantiene la lista de conexiones WebSocket activas y emite eventos (alertas, cambios de estado, resets) a todos los clientes conectados. Recibe eventos del componente Reporte / Alertas.}
+\drow{Configuración                & Carga argumentos de línea de comandos y archivo de configuración opcional. Provee acceso a parámetros (canal, BSSID protegido, umbrales) a todos los componentes.}
+\drow{Manejador de Sesión          & Gestiona el ciclo de vida del detector: inicialización, ejecución, captura de SIGINT (Ctrl+C), emisión de resumen final, liberación de recursos. Cuando el Panel del Defensor está activo, también responde a comandos de reset emitidos desde el Panel.}
+\end{datatable}
+
+\subsubsection{Diagrama de componentes del subsistema defensivo}
+
+\vspace{0.3cm}
+\begin{verbatim}
+       Panel del Defensor (frontend HTML/JS, en navegador)
+                  |
+                  | HTTP + WebSocket sobre localhost:8000
+                  v
+   +-----------------+        +------------------------+
+   | Servidor        | <----> | WebSocket Manager      |
+   | FastAPI         |        | (lista de conexiones)  |
+   +--------+--------+        +-----------+------------+
+            |                             ^
+            | inicia detector             | eventos (alertas,
+            v                             |  resets, status)
+   +-----------------+      +-------------+----------+
+   |  Manejador de   |----->| Reporte / Alertas      |---> consola
+   |  Sesion         |      +------------+-----------+      stdout
+   +--------+--------+                   ^
+            |                            | alertas
+            v                            |
+   +-----------------+      +------------+----------+
+   | Capturador      |      | Correlador de Cadena  |
+   | de Frames       |      +------------+----------+
+   | (sniff o pcap)  |                   ^
+   +--------+--------+                   |
+            |                            |
+            v frames                     | alertas individuales
+   +--------+--------+                   |
+   | Despachador     |--+--+--+----------+
+   +-----------------+  |  |  |          |
+                        v  v  v          |
+                  +---------+ +---------+ +---------+
+                  | Analiz. | | Analiz. | | Analiz. |
+                  | Beacon  | | Deauth  | | EvilTwin|
+                  | Flood   | |         | |         |
+                  +----+----+ +----+----+ +----+----+
+                       |           |           |
+                       +-----+-----+-----+-----+
+                             | (cada uno emite alertas
+                             v  hacia Reporte/Alertas)
+
+       +---------------+
+       | Configuracion | <-- argumentos CLI / archivo conf / Panel
+       +---------------+
+\end{verbatim}
+
+\subsection{Vista Lógica Combinada}
+
+Aunque los subsistemas son independientes, los componentes correspondientes
+se mapean simétricamente:
+
+\begin{datatable}{L{5.5cm} L{5.5cm} L{4.3cm}}{Componente Ofensivo & Componente Defensivo & Relación}
+\drow{Módulo Beacon Flood    & Analizador Beacon Flood    & La firma generada es la firma detectada}
+\drow{Módulo Deauth          & Analizador Deauth          & La firma generada es la firma detectada}
+\drow{Módulo Evil Twin       & Analizador Evil Twin       & La firma generada es la firma detectada}
+\drow{Controlador de Cadena  & Correlador de Cadena       & El control secuencial del lado ofensivo se refleja en la correlación temporal del defensivo}
+\drow{Interfaz Serial        & Reporte / Alertas (stdout) & Salida de diagnóstico hacia el operador respectivo, complementaria al panel web}
+\drow{Servidor API REST      & Servidor FastAPI           & Capa de exposición HTTP de cada subsistema; ambos sirven datos a un panel web operado por humanos}
+\drow{Panel del Atacante     & Panel del Defensor         & Interfaces gráficas paralelas: una para conducir el ataque, otra para observar la detección}
+\drow{Configuración          & Configuración              & Patrón equivalente en ambos lados, modificable desde su respectivo panel}
+\end{datatable}
+
+% ==============================================================================
+\section{Vista de Procesos}
+% ==============================================================================
+
+La vista de procesos describe cómo opera el sistema en tiempo de ejecución:
+qué hilos existen, qué eventos los disparan, y cómo se comunican.
+
+\subsection{Procesos del Subsistema Ofensivo}
+
+La ESP32 utiliza FreeRTOS por debajo de Arduino-ESP32 / ESP-IDF. La
+arquitectura de procesos del firmware se organiza en las siguientes
+tareas:
+
+\begin{datatable}{L{3.5cm} L{2cm} L{9.8cm}}{Tarea (FreeRTOS) & Prioridad & Responsabilidad}
+\drow{Serial Listener      & Media  & Bucle infinito que lee comandos de la UART y los entrega al Controlador de Cadena.}
+\drow{Cadena Controller    & Alta   & Ejecuta la lógica de la fase activa. Se duerme entre eventos para no consumir CPU.}
+\drow{Beacon Emitter       & Alta   & Activa solo durante fase 1. Emite beacons cíclicamente con un timer de alta resolución.}
+\drow{Deauth Emitter       & Alta   & Activa solo durante fase 2. Emite frames de deauth en ráfagas.}
+\drow{HTTP Server (Portal) & Media  & Activa solo durante fase 3. Procesa peticiones HTTP del portal cautivo del Evil Twin.}
+\drow{DNS Responder        & Media  & Activa solo durante fase 3. Responde consultas DNS.}
+\drow{DHCP Server          & Media  & Activa solo durante fase 3. Asigna IPs por DHCP.}
+\drow{AP de Control        & Media  & Activa cuando no hay ataque en curso. Mantiene el AP \texttt{WARDEN\_CONTROL} activo y maneja asociaciones de la laptop del Operador.}
+\drow{API REST Server      & Media  & Activa cuando no hay ataque en curso. Procesa peticiones HTTP del Panel del Atacante en \texttt{192.168.4.1:80}. Suspendida durante el Evil Twin para no competir por la radio.}
+\drow{Reconocedor          & Media  & Activa bajo demanda al recibir \texttt{GET /scan} o \texttt{GET /clients}. Realiza escaneo activo o captura pasiva durante una ventana acotada y construye la respuesta JSON.}
+\end{datatable}
+
+\textbf{Coexistencia de tareas:} La ESP32 alterna entre dos modos
+operativos macro: \emph{modo control} (AP de Control + API REST activos,
+ataques inactivos) y \emph{modo ataque} (las tareas del ataque activo
+toman precedencia y, en el caso del Evil Twin, el AP de Control y la API
+REST se suspenden temporalmente porque la radio está dedicada al AP
+malicioso). Las fases 1 (Beacon Flood) y 2 (Deauth) sí pueden coexistir
+con el AP de Control activo, ya que la radio puede multiplexar.
+
+\subsection{Diagrama de transición de estados del Controlador de Cadena}
+
+\vspace{0.3cm}
+\begin{verbatim}
+                 [INICIO]
+                    |
+                    v
+              +-----------+
+       +----->|   IDLE    |<------------------+
+       |      +-----+-----+                   |
+       |            |                         |
+       |            | comando ``start''         |
+       |            v                         |
+       |     +--------------+                 |
+       |     | FASE_1       |  comando ``stop'' |
+       |     | Beacon Flood +-----+           |
+       |     +--------------+     |           |
+       |            |             |           |
+       |            | timeout     |           |
+       |            v             |           |
+       |     +--------------+     |           |
+       |     | FASE_2       |     |           |
+       |     | Deauth       +-----+           |
+       |     +--------------+     |           |
+       |            |             |           |
+       |            | timeout     |           |
+       |            v             |           |
+       |     +--------------+     |           |
+       |     | FASE_3       |     |           |
+       |     | Evil Twin    +-----+           |
+       |     +--------------+     |           |
+       |            |             |           |
+       |            | timeout     v           |
+       |            v        +---------+      |
+       |     +--------------+|         |      |
+       +-----+ FINALIZADO   ||  STOP   +------+
+             +--------------++---------+
+\end{verbatim}
+
+\subsection{Procesos del Subsistema Defensivo}
+
+Cuando el Panel del Defensor está activo, el subsistema defensivo opera
+con \textbf{tres hilos concurrentes} dentro del mismo proceso Python,
+gestionados por el bucle de eventos de \texttt{asyncio} de FastAPI:
+
+\begin{datatable}{L{3.5cm} L{2cm} L{9.8cm}}{Hilo & Tipo & Responsabilidad}
+\drow{Hilo principal (FastAPI / Uvicorn) & asyncio loop & Atiende peticiones HTTP del frontend, gestiona conexiones WebSocket entrantes, despacha eventos del WebSocket Manager hacia los clientes conectados.}
+\drow{Hilo del detector & threading.Thread & Ejecuta \texttt{sniff()} de Scapy en modo bloqueante. Procesa frames y genera alertas. Las alertas se entregan al hilo principal mediante una cola \texttt{asyncio.Queue} thread-safe.}
+\drow{Hilo de WebSocket sender & tarea asyncio & Consume la cola de alertas y reenvía cada una a todos los clientes WebSocket conectados.}
+\end{datatable}
+
+Las cuatro fuentes de eventos en este modo son:
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Fuente & Naturaleza}
+\drow{Frames entrantes      & Cada frame capturado por Scapy invoca el callback del Despachador en el hilo del detector. Es el flujo de captura.}
+\drow{Peticiones HTTP        & El navegador envía peticiones REST (status, config, reset) que FastAPI atiende en el hilo principal.}
+\drow{Mensajes WebSocket     & Comandos del frontend (reset de sesión) y eventos del backend (alertas) viajan bidireccionalmente sobre el WebSocket.}
+\drow{Señales del SO        & SIGINT (Ctrl+C) en la terminal donde corre el servidor dispara el shutdown ordenado: cierra WebSockets, detiene el hilo del detector, libera la interfaz de captura.}
+\end{datatable}
+
+En el modo CLI clásico (sin Panel), el detector mantiene su comportamiento
+original: un único hilo bloqueante en \texttt{sniff()} que emite alertas
+por consola estándar.
+
+\subsection{Diagrama de flujo de procesamiento de un frame}
+
+\vspace{0.3cm}
+\begin{verbatim}
+   Frame entrante (Scapy)
+            |
+            v
+   +-----------------+
+   | Filtro de canal | --> descarta si no es el canal protegido
+   +--------+--------+
+            |
+            v
+   +-----------------+
+   | Despachador     | --> identifica tipo de frame
+   +--------+--------+
+            |
+   +--------+----+----+
+   |        |    |    |
+   v        v    v    v
+ Beacon  Deauth EvT  Otro (ignorado)
+   |        |    |
+   v        v    v
+ [Analiz][Analiz][Analiz]
+   |        |    |
+   v        v    v
+ ¿Firma?  ¿Firma? ¿Firma?
+   |        |    |
+   |  no    | no | no  -> retorno (silencio)
+   |  si    | si | si
+   v        v    v
+ +----------+----+
+ |    Reporte    | -> alerta a consola
+ +-------+-------+
+         |
+         v
+ +---------------+
+ | Correlador    | -> ¿tres alertas en ventana?
+ +-------+-------+
+         |
+   si    | no
+   v     +-> retorno
+ alerta agregada -> consola
+\end{verbatim}
+
+% ==============================================================================
+\section{Vista de Despliegue (Vista Física)}
+% ==============================================================================
+
+La vista de despliegue muestra dónde corre cada componente físicamente.
+
+\subsection{Topología de despliegue}
+
+\vspace{0.3cm}
+\begin{verbatim}
++================================================================+
+|                      LABORATORIO WARDEN                        |
+|                                                                |
+|  +---------------------+         +---------------------+       |
+|  | NODO ATACANTE       |         | NODO ATACANTE       |       |
+|  | (Laptop Operador)   |         | (ESP32)             |       |
+|  |                     |         |                     |       |
+|  | - Frontend Panel    | WiFi    | - Firmware ofensivo |       |
+|  |   (HTML+JS+Tailwind)| WARDEN_ | - AP Control        |       |
+|  | - Servidor estatico | CONTROL | - API REST          |       |
+|  |   (opcional)        +<------->| - Reconocedor       |       |
+|  | - Cliente serial    |         | - Lookup OUI        |       |
+|  |   (diagnostico)     |   USB   | - WiFi 2.4 GHz      |       |
+|  +----------+----------+ <-----> +----------+----------+       |
+|             ^                               |                  |
+|             |                               | AIRE             |
+|         (operador atacante                  | (frames maliciosos)
+|          opera el panel desde               v                  |
+|          su navegador)              +------------------+       |
+|                                                                |
+|  +---------------------+         +---------------------+       |
+|  | NODO DETECTOR       |         | ROUTER LEGITIMO     |       |
+|  | (Laptop Arch Linux) |         | (Adquirido)         |       |
+|  |                     |         | SSID: LAB_WARDEN_UTP|       |
+|  | - Servidor FastAPI  |         | Sin internet        |       |
+|  |   (uvicorn)         |         +----------+----------+       |
+|  | - Detector Python   |                    |                  |
+|  | - Scapy             |                    | WiFi (asociado)  |
+|  | - Frontend Panel    |  AIRE              v                  |
+|  |   Defensor (HTML)   | <------>  +------------------+        |
+|  | + Adaptador Panda   |           | VICTIMA PRIMARIA |        |
+|  |   (USB, modo monitor)|          | (Redmi Note 7)   |        |
+|  +----------+----------+           | MIUI 12.5        |        |
+|             ^                      +------------------+        |
+|             |                                                  |
+|         (operador detector                                     |
+|          abre el panel en                                      |
+|          http://localhost:8000)    +------------------+        |
+|                                    | VICTIMA SECUNDARIA|       |
+|                                    | (Dell Latitude    |       |
+|                                    |  E6220)           |       |
+|                                    | Ubuntu Server     |       |
+|                                    | 22.04.5 LTS       |       |
+|                                    +-------------------+       |
+|                                                                |
++================================================================+
+\end{verbatim}
+
+\textbf{Redes WiFi presentes en el laboratorio:}
+
+\begin{datatable}{L{4cm} L{11.3cm}}{Red WiFi & Rol}
+\drow{\texttt{LAB\_WARDEN\_UTP}    & Red legítima del laboratorio. Servida por el router. Desconectada de internet. Las víctimas se asocian a esta red. Es el objetivo del ataque.}
+\drow{\texttt{WARDEN\_CONTROL}     & Red de gestión. Servida por la ESP32 cuando no hay un ataque en curso. La laptop del Operador del Atacante se asocia a esta red para usar el Panel del Atacante. Aislada de internet.}
+\drow{Evil Twin (\texttt{LAB\_WARDEN\_UTP} clonado) & Red maliciosa. Servida por la ESP32 durante la fase 3 del ataque. Imita el SSID legítimo. Activa solo durante la fase 3.}
+\end{datatable}
+
+\subsection{Asignación de componentes a nodos}
+
+\begin{datatable}{L{3.8cm} L{4.2cm} L{7.3cm}}{Nodo & Hardware & Componentes desplegados}
+\drow{Nodo Atacante (ESP32) & ESP32-WROOM-32 (4 MB flash, 520 KB RAM) & Firmware ofensivo completo: Controlador de Cadena, módulos de ataque, AP de Control, Servidor API REST, Reconocedor, Lookup OUI, Validador Ético, base de datos OUI embebida en flash.}
+\drow{Nodo Atacante (Laptop) & Laptop del Operador del Atacante (cualquier OS con navegador moderno) & Frontend del Panel del Atacante (HTML+JS+Tailwind). El frontend puede servirse desde un servidor estático del equipo, un servidor remoto, o abrirse como archivo local. Cliente serial opcional para diagnóstico.}
+\drow{Nodo Detector & Laptop con Arch Linux + Adaptador Panda Wireless PAU0B AC600 (USB) & Servidor FastAPI con detector integrado: todos los componentes del subsistema defensivo (Capturador, Despachador, Analizadores, Correlador, Reporte, WebSocket Manager, Manejador de Sesión) más el frontend del Panel del Defensor servido como recursos estáticos por el mismo servidor.}
+\drow{Router Legítimo & Router WiFi económico (modelo a definir al adquirir) & Firmware del fabricante. No corre componentes de WARDEN, es solo objetivo del ataque.}
+\drow{Víctima Primaria & Redmi Note 7 con MIUI 12.5 & Sistema operativo Android nativo. No corre componentes de WARDEN, es objetivo de los ataques.}
+\drow{Víctima Secundaria & Dell Latitude E6220 con Ubuntu Server 22.04.5 LTS & Sistema operativo nativo. No corre componentes de WARDEN, es objetivo testigo.}
+\end{datatable}
+
+\subsection{Canales de comunicación física}
+
+\begin{datatable}{L{3.5cm} L{4cm} L{7.8cm}}{Canal & Tecnología & Uso}
+\drow{Aire RF (ataques)     & 802.11 2.4 GHz, canal del laboratorio & Frames de gestión y datos del ataque entre ESP32 y víctimas. Capturado pasivamente por el Panda.}
+\drow{Aire RF (control)     & 802.11 2.4 GHz, red WARDEN\_CONTROL & Comunicación HTTP/JSON entre la laptop del Operador y la API REST de la ESP32.}
+\drow{Loopback (detector)   & TCP localhost                         & Comunicación HTTP+WebSocket entre el navegador del Operador del Detector y el servidor FastAPI en su misma máquina.}
+\drow{USB (atacante)        & USB 2.0 + UART 115200 baud            & Consola serial entre el computador del Operador y la ESP32. Mecanismo secundario de control y diagnóstico.}
+\drow{USB (detector)        & USB 2.0                               & Conexión del adaptador Panda con la laptop.}
+\drow{Botón GPIO            & Conexión a pin de la ESP32            & Activación física de la cadena ofensiva. Mecanismo secundario.}
+\end{datatable}
+
+% ==============================================================================
+\section{Vista de Desarrollo}
+% ==============================================================================
+
+La vista de desarrollo describe la organización del código fuente, las
+herramientas de compilación y las dependencias.
+
+\subsection{Estructura del repositorio}
+
+\vspace{0.3cm}
+\begin{verbatim}
+warden/
++-- README.md                          (instrucciones generales)
++-- LICENSE                            (licencia del proyecto)
++-- .gitignore                         (patrones a ignorar por Git)
+|
++-- docs/                              (toda la documentacion)
+|   +-- latex/                         (fuentes .tex)
+|   |   +-- warden-style.sty
+|   |   +-- warden-vision.tex
+|   |   +-- warden-threat-model.tex
+|   |   +-- warden-fundamentos.tex
+|   |   +-- warden-laboratorio.tex
+|   |   +-- warden-srs.tex
+|   |   +-- warden-use-cases.tex
+|   |   +-- warden-architecture.tex
+|   |   +-- warden-design.tex
+|   +-- pdf/                           (PDFs compilados, snapshots)
+|   +-- markdown/                      (documentacion interna del equipo)
+|
++-- src/                               (codigo fuente)
+|   +-- attacker/                      (firmware de la ESP32)
+|   |   +-- main.ino                   (entry point Arduino)
+|   |   +-- chain_controller.{h,cpp}
+|   |   +-- modules/
+|   |   |   +-- beacon_flood.{h,cpp}
+|   |   |   +-- deauth.{h,cpp}
+|   |   |   +-- evil_twin.{h,cpp}
+|   |   |   +-- captive_portal.{h,cpp}
+|   |   |   +-- dns_server.{h,cpp}
+|   |   |   +-- dhcp_server.{h,cpp}
+|   |   +-- api/                       (API REST y AP de control)
+|   |   |   +-- api_server.{h,cpp}
+|   |   |   +-- control_ap.{h,cpp}
+|   |   |   +-- recon.{h,cpp}          (Reconocedor: scan + clients)
+|   |   |   +-- oui_lookup.{h,cpp}
+|   |   |   +-- oui_database.h         (base de datos OUI embebida)
+|   |   +-- serial_interface.{h,cpp}
+|   |   +-- config.{h,cpp}
+|   |   +-- ethical_validator.{h,cpp}
+|   |
+|   +-- attacker-panel/                (frontend del Panel del Atacante)
+|   |   +-- index.html
+|   |   +-- assets/
+|   |   |   +-- panel.js               (logica del frontend)
+|   |   |   +-- api-client.js          (cliente de la API REST)
+|   |   |   +-- styles.css             (overrides de Tailwind si aplica)
+|   |   +-- README.md                  (instrucciones de hospedaje)
+|   |
+|   +-- detector/                      (detector Python + servidor FastAPI)
+|       +-- main.py                    (entry point CLI clasico)
+|       +-- web/                       (servidor del Panel del Defensor)
+|       |   +-- __init__.py
+|       |   +-- server.py              (FastAPI app + lifecycle)
+|       |   +-- websocket_manager.py
+|       |   +-- routes.py              (endpoints HTTP internos)
+|       |   +-- static/                (frontend del Panel del Defensor)
+|       |   |   +-- index.html
+|       |   |   +-- panel.js
+|       |   |   +-- styles.css
+|       +-- capture/
+|       |   +-- live_capture.py
+|       |   +-- pcap_capture.py
+|       +-- analyzers/
+|       |   +-- beacon_flood.py
+|       |   +-- deauth.py
+|       |   +-- evil_twin.py
+|       +-- correlator.py
+|       +-- reporter.py
+|       +-- session.py
+|       +-- config.py
+|       +-- requirements.txt           (incluye fastapi, uvicorn, scapy)
+|
++-- captures/                          (PCAPs de referencia)
+|   +-- beacon-flood-sample.pcapng
+|   +-- deauth-sample.pcapng
+|   +-- evil-twin-sample.pcapng
+|   +-- chain-complete-sample.pcapng
+|
++-- reports/                           (bitacoras de sesiones)
+    +-- session-2026-04-25.md
+    +-- session-2026-05-02.md
+    +-- ...
+\end{verbatim}
+
+\subsection{Tecnologías y dependencias}
+
+\begin{datatable}{L{2.8cm} L{3.5cm} L{8.5cm}}{Componente & Tecnología & Justificación}
+\drow{Firmware ESP32  & C/C++ con Arduino-ESP32 o ESP-IDF & Estándar de facto para ESP32. Soporte amplio de bibliotecas y comunidad.}
+\drow{API REST ESP32  & ESPAsyncWebServer + ArduinoJson & Servidor HTTP asíncrono ligero, adecuado para los recursos de la ESP32. Serialización JSON eficiente.}
+\drow{Detector        & Python 3.10+                      & Lenguaje de elección para análisis de paquetes en seguridad inalámbrica. Sintaxis legible para integrantes con experiencia variable.}
+\drow{Captura         & Scapy 2.5+                        & Biblioteca estándar para captura y manipulación de paquetes en Python. Soporta nativamente 802.11 (\texttt{Dot11}, \texttt{Dot11Beacon}, \texttt{Dot11Deauth}).}
+\drow{Servidor Panel Defensor & FastAPI 0.110+ + Uvicorn 0.27+ & Framework Python moderno con soporte nativo de WebSockets, async/await y documentación automática. Servidor ASGI Uvicorn para alta concurrencia ligera.}
+\drow{Frontends       & HTML + JavaScript vanilla + Tailwind CSS (CDN) & Stack mínimo sin build steps. Los dos paneles comparten el mismo enfoque para mantener consistencia y facilidad de mantenimiento.}
+\drow{Documentación   & LaTeX                             & Producción de PDFs profesionales con consistencia tipográfica. Plantilla compartida \texttt{warden-style.sty}.}
+\drow{Control de versiones & Git + GitHub                 & Estándar de la industria. Permite colaboración paralela entre los tres integrantes.}
+\end{datatable}
+
+\subsection{Compilación y ejecución}
+
+\subsubsection{Subsistema ofensivo (firmware ESP32)}
+El firmware se compila con Arduino IDE (recomendado para principiantes)
+o con \texttt{arduino-cli} en línea de comandos. La compilación produce
+un binario que se carga a la ESP32 vía USB.
+
+\subsubsection{Panel del Atacante (frontend)}
+El frontend del Panel del Atacante consiste en archivos estáticos
+(HTML, JS, CSS) que pueden hospedarse de tres formas equivalentes:
+servidos desde un servidor web del equipo (Apache, nginx, GitHub
+Pages), abiertos como archivo local en el navegador (\texttt{file:///}),
+o servidos por un servidor Python simple (\texttt{python3 -m
+http.server 8080}). El navegador del Operador del Atacante debe estar
+conectado a la red \texttt{WARDEN\_CONTROL} para que el frontend pueda
+alcanzar la API de la ESP32 en \texttt{http://192.168.4.1}.
+
+\subsubsection{Subsistema defensivo y Panel del Defensor}
+El detector y su Panel se ejecutan como un único proceso Python sin
+compilación. Las dependencias se instalan con \texttt{pip install -r
+requirements.txt} desde un entorno virtual. Para arrancar el Panel:
+\texttt{python3 -m warden.detector.web} (o vía \texttt{uvicorn
+warden.detector.web.server:app}). El detector también puede ejecutarse
+en modo CLI clásico sin Panel mediante \texttt{python3
+-m warden.detector.main} para escenarios de análisis offline o
+diagnóstico.
+
+\subsubsection{Documentación}
+Cada \texttt{.tex} se compila con \texttt{pdflatex} (dos pasadas para
+resolver tablas de contenido y referencias).
+
+% ==============================================================================
+\section{Vista de Escenarios}
+% ==============================================================================
+
+La vista de escenarios muestra cómo las otras cuatro vistas trabajan
+juntas en casos de uso clave. Se ilustra con dos escenarios principales:
+ejecución automática de la cadena completa, y análisis offline de un
+PCAP.
+
+\subsection{Escenario 1: Cadena ofensiva automática con detección en vivo (UC-12)}
+
+\textbf{Objetivo:} ejecutar la demostración end-to-end del sistema
+completo desde los paneles web.
+
+\textbf{Componentes involucrados:}
+
+\begin{itemize}
+  \item Subsistema ofensivo: Panel del Atacante, Servidor API REST, AP
+    de Control, Reconocedor, Lookup OUI, Validador Ético, Controlador
+    de Cadena, los tres módulos de ataque.
+  \item Subsistema defensivo: Servidor FastAPI, frontend del Panel del
+    Defensor, WebSocket Manager, Manejador de Sesión, Capturador de
+    Frames (modo en vivo), Despachador, los tres analizadores,
+    Correlador, Reporte.
+\end{itemize}
+
+\textbf{Secuencia (alto nivel):}
+
+\vspace{0.3cm}
+\begin{verbatim}
+T-30   Preparacion: laptop del Atacante conectada a WARDEN_CONTROL,
+       Panel del Atacante abierto en navegador
+T-30   Preparacion: laptop del Detector con FastAPI corriendo,
+       Panel del Defensor abierto en localhost:8000
+T+0    Operador Detector configura BSSID y SSID protegidos en el
+       Panel del Defensor y presiona ``Iniciar deteccion''
+T+0    Servidor FastAPI inicia hilo del detector; Capturador invoca
+       sniff() de Scapy
+T+0    Indicador visual del Panel del Defensor: VERDE
+T+5    Operador Atacante presiona ``Escanear redes'' en su Panel
+T+15   Panel muestra lista de redes; Operador selecciona LAB_WARDEN_UTP
+T+18   Operador presiona ``Detectar clientes''
+T+50   Panel muestra clientes con fabricantes resueltos por OUI;
+       Operador selecciona MAC del Redmi Note 7
+T+55   Panel presenta confirmacion etica; Operador marca casilla
+T+58   Operador presiona ``Lanzar ataque''; Panel envia POST /attack/start
+T+58   Controlador de Cadena entra en FASE_1; Beacon Emitter activo
+T+60   Detector recibe primeros beacons falsos via aire
+T+60   Analizador Beacon Flood detecta tasa anomala
+T+60   Reporte emite alerta hacia stdout y hacia WebSocket Manager
+T+60   Panel del Defensor recibe evento por WebSocket; aparece alerta
+       en la lista; indicador transita a AMARILLO
+T+88   Controlador de Cadena transita a FASE_2 (Deauth)
+T+89   Detector recibe deauths; Analizador emite alerta
+T+89   Panel del Defensor muestra segunda alerta
+T+103  Controlador de Cadena transita a FASE_3 (Evil Twin)
+T+103  Panel del Atacante muestra ``Conexion temporal no disponible''
+       (la ESP32 perdio el AP de control durante Evil Twin)
+T+104  Detector recibe beacon del Evil Twin; Analizador Evil Twin
+       detecta SSID duplicado y emite alerta
+T+105  Correlador identifica las 3 alertas en ventana corta
+T+105  Reporte emite alerta agregada CADENA_OFENSIVA
+T+105  Indicador del Panel del Defensor transita a ROJO
+T+110  Operador Victima se conecta al Evil Twin
+T+112  Operador Victima ingresa credenciales ficticias en portal
+T+112  ESP32 registra credenciales y las almacena en buffer volatil
+T+223  Controlador de Cadena finaliza fase 3 (timeout)
+T+223  ESP32 reactiva AP de Control y API REST
+T+225  Panel del Atacante reconecta y muestra resumen post-ataque
+       con credenciales capturadas
+T+230  Operador Detector presiona ``Reiniciar sesion'' o cierra el
+       Panel; sesion finaliza con resumen
+\end{verbatim}
+
+\subsection{Escenario 2: Análisis offline de PCAP de referencia (UC-08)}
+
+\textbf{Objetivo:} desarrollar y probar el detector sin disponer del
+adaptador Panda, usando una captura previamente generada.
+
+\textbf{Componentes involucrados:}
+
+\begin{itemize}
+  \item Solo subsistema defensivo: Manejador de Sesión, Capturador de
+    Frames (modo PCAP), Despachador, los tres analizadores, Correlador,
+    Reporte.
+  \item Sistema de archivos: archivo \texttt{.pcap} de referencia.
+\end{itemize}
+
+\textbf{Secuencia (alto nivel):}
+
+\vspace{0.3cm}
+\begin{verbatim}
+T+0   Integrante ejecuta detector.py --pcap captura.pcap --bssid X
+T+0   Manejador de Sesion inicializa componentes
+T+0   Capturador de Frames abre el archivo
+T+0   Capturador entrega el primer frame al Despachador
+T+0   Despachador identifica tipo y enruta al analizador
+... (procesamiento iterativo de cada frame)
+T+0.1 Analizador Evil Twin detecta firma, Reporte emite ALERT
+T+0.2 Analizador Beacon Flood detecta firma, Reporte emite ALERT
+... (continua hasta fin de archivo)
+T+0.5 Capturador llega al fin del archivo
+T+0.5 Manejador de Sesion detecta EOF y emite resumen
+T+0.5 Detector termina con codigo 0
+\end{verbatim}
+
+Este escenario es crítico porque permite que los integrantes del equipo
+sin acceso al hardware del laboratorio desarrollen y prueben el detector
+durante todo el ciclo de implementación.
+
+% ==============================================================================
+\section{Decisiones Arquitectónicas (ADR)}
+% ==============================================================================
+
+Esta sección documenta las decisiones arquitectónicas más significativas
+tomadas durante el diseño del sistema, junto con sus alternativas
+consideradas y la justificación de cada elección. El formato sigue el
+patrón de \emph{Architecture Decision Record}.
+
+\subsection{ADR-01: Comunicación entre subsistemas exclusivamente por aire}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El sistema tiene dos subsistemas (ofensivo y defensivo)
+que necesitan operar coordinadamente durante una demostración. Existen
+varias formas de coordinarlos: canal digital directo (USB, MQTT,
+sockets), o exclusivamente a través del medio inalámbrico que es el
+objeto del estudio.
+
+\textbf{Decisión:} La comunicación entre subsistemas ocurre
+exclusivamente por radiofrecuencia 802.11. No hay canales digitales
+directos.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Refleja la realidad operacional: en escenarios reales, atacante y
+    defensor no comparten canales privilegiados.
+  \item Garantiza que cualquier debilidad o fortaleza del detector
+    proviene de su capacidad real de análisis del aire, no de información
+    privilegiada.
+  \item Simplifica la arquitectura: cada subsistema es completamente
+    autónomo.
+\end{itemize}
+
+\textbf{Consecuencias:}
+
+\begin{itemize}
+  \item No es posible sincronización exacta de marcas de tiempo entre
+    ambos subsistemas. Cada uno usa su propio reloj.
+  \item La coordinación durante demostraciones requiere comunicación
+    humana entre los Operadores (acordar momentos, etc.).
+\end{itemize}
+
+\subsection{ADR-02: Python con Scapy para el subsistema defensivo}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El detector necesita capturar y analizar frames
+802.11 en tiempo real. Existen varias opciones: C con libpcap, Python
+con Scapy, Go con gopacket, Rust con pcap, herramientas comerciales.
+
+\textbf{Decisión:} Python 3.10+ con Scapy 2.5+.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Scapy es el estándar de facto en la industria para análisis de
+    paquetes en seguridad inalámbrica.
+  \item Python tiene la barrera de entrada más baja, importante dado el
+    nivel heterogéneo del equipo.
+  \item Scapy provee parsers nativos de 802.11 (\texttt{Dot11Beacon},
+    \texttt{Dot11Deauth}) sin requerir manipulación manual de bytes.
+  \item El mismo código sirve para captura en vivo y análisis offline
+    (objetivo D-06 del Documento de Visión).
+\end{itemize}
+
+\textbf{Alternativas descartadas:}
+
+\begin{itemize}
+  \item \textbf{C con libpcap:} Mejor rendimiento, pero curva de
+    aprendizaje empinada y desarrollo más lento. Innecesario para los
+    volúmenes esperados.
+  \item \textbf{Go con gopacket:} Excelente alternativa moderna, pero
+    el equipo no tiene experiencia previa.
+  \item \textbf{Herramientas comerciales (Cisco CleanAir, etc.):} Costo
+    prohibitivo y opacas (no se puede inspeccionar la lógica).
+\end{itemize}
+
+\subsection{ADR-03: ESP32 para el subsistema ofensivo}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El subsistema ofensivo necesita generar frames 802.11
+de gestión arbitrarios y operar como AP. Las opciones incluyen: ESP32,
+microcontrolador con módulo WiFi externo, Raspberry Pi, computadora con
+adaptador WiFi compatible.
+
+\textbf{Decisión:} ESP32 estándar (cualquier variante con WiFi 2.4 GHz).
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Costo extremadamente bajo (5-15 USD).
+  \item Capacidad nativa de WiFi 2.4 GHz con APIs accesibles para
+    manipulación de frames de gestión (con bibliotecas o modificaciones
+    de SDK documentadas).
+  \item Hardware autónomo (no requiere computadora dedicada para operar).
+  \item Caso real: la ESP32 es el hardware más utilizado en proyectos
+    académicos de seguridad WiFi reproducibles.
+\end{itemize}
+
+\textbf{Alternativas descartadas:}
+
+\begin{itemize}
+  \item \textbf{Raspberry Pi:} Más potente pero más caro y más complejo.
+    Sobredimensionado para los tres ataques.
+  \item \textbf{Laptop con adaptador inyectable:} Usable, pero el equipo
+    pierde la oportunidad de aprender embedded.
+\end{itemize}
+
+\subsection{ADR-04: Detección por reglas heurísticas, no machine learning}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} La detección de ataques puede implementarse con
+reglas explícitas (tasa de beacons, conteo de deauths) o con modelos de
+aprendizaje automático (clasificadores entrenados sobre tráfico
+etiquetado).
+
+\textbf{Decisión:} Reglas heurísticas explícitas, configurables por
+umbral.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Comportamiento determinístico y explicable: cada alerta puede
+    rastrearse a una regla específica.
+  \item No requiere conjunto de datos etiquetados.
+  \item Compatible con el plazo del proyecto (3-4 semanas).
+  \item Apto para demostración académica: el profesor y los integrantes
+    pueden seguir la lógica sin opacidad.
+\end{itemize}
+
+\textbf{Consecuencias:} la detección puede tener limitaciones ante
+variantes de ataques no contempladas en las reglas. Esto está aceptado y
+documentado en el alcance del proyecto.
+
+\subsection{ADR-05: Configuración externa al código}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} Parámetros como BSSID protegido, canal, umbrales de
+detección, duraciones de fase pueden estar embebidos en el código
+(constantes) o externalizados (argumentos CLI, archivos de configuración,
+variables de entorno).
+
+\textbf{Decisión:} Toda configuración se externaliza, ya sea por
+argumentos de línea de comandos (detector) o por consola serial
+(firmware ofensivo).
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Cumple con RF-DEF-010, RF-OFF-006 y RF-OFF-015.
+  \item Permite modificar el comportamiento sin recompilación.
+  \item Facilita la reproducibilidad: el mismo binario puede usarse en
+    múltiples sesiones de laboratorio con configuraciones distintas.
+\end{itemize}
+
+\subsection{ADR-06: Validador ético en el firmware}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El firmware ofensivo es capaz de atacar cualquier
+BSSID. Esta capacidad puede mitigarse con código que valide los objetivos
+configurados.
+
+\textbf{Decisión:} Implementar un componente Validador Ético que rechace
+configuraciones de BSSID que no estén dentro de un rango autorizado.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item Codifica restricciones éticas como mecanismo técnico, no solo como
+    documentación.
+  \item Cumple con RNF-SYS-004 del SRS.
+  \item Reduce el riesgo de uso indebido accidental por parte del propio
+    equipo.
+\end{itemize}
+
+\textbf{Limitaciones:} la validación es de ``buena fe'': un usuario
+malintencionado con acceso al código fuente puede modificarla. La
+validación es un freno operativo, no una garantía criptográfica.
+
+\subsection{ADR-07: Patrón híbrido frontend/API para el Panel del Atacante}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} La adición del Panel del Atacante puede implementarse
+de varias formas: (a) servidor web completo embebido en la ESP32 que
+sirva tanto el HTML como la API, (b) frontend hospedado fuera de la
+ESP32 con la ESP32 actuando solo como API REST, (c) panel hospedado en
+un servidor remoto que requiera internet en el laboratorio.
+
+\textbf{Decisión:} Patrón híbrido: el frontend HTML/CSS/JavaScript se
+hospeda fuera de la ESP32 (en la laptop del Operador o en un servidor
+del equipo); la ESP32 expone solo una API REST con respuestas JSON. La
+laptop del Operador se conecta a la red WiFi \texttt{WARDEN\_CONTROL}
+servida por la ESP32 para alcanzar la API.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item La ESP32-WROOM-32 con 4 MB de flash y 520 KB de RAM tiene
+    recursos limitados. Servir solo JSON consume considerablemente
+    menos memoria que servir páginas HTML completas con assets.
+  \item El frontend puede usar herramientas modernas (Tailwind via CDN,
+    JavaScript moderno) sin restricciones de tamaño impuestas por la
+    flash de la ESP32.
+  \item La separación frontend/backend es un patrón estándar de la
+    industria que facilita el mantenimiento y la evolución
+    independiente de cada capa.
+  \item La operación no requiere internet: la conectividad es
+    punto-a-punto entre la laptop y la ESP32 a través de WiFi local.
+\end{itemize}
+
+\textbf{Alternativas descartadas:}
+
+\begin{itemize}
+  \item \textbf{Servidor web embebido completo en ESP32:} Funcionaría,
+    pero limita severamente el tamaño y la riqueza del frontend. Sería
+    aceptable solo si se contara con una variante ESP32-WROVER con
+    PSRAM.
+  \item \textbf{Servidor remoto con internet:} Viola la restricción de
+    aislamiento del laboratorio (sin internet) y agrega dependencias
+    innecesarias.
+\end{itemize}
+
+\textbf{Consecuencias:}
+
+\begin{itemize}
+  \item Durante la fase 3 (Evil Twin), la ESP32 no puede mantener el
+    AP de Control simultáneamente con el AP malicioso. La conectividad
+    con el panel se pierde temporalmente y se recupera al finalizar la
+    fase. Esto está documentado en el flujo de UC-17.
+  \item El frontend debe manejar pérdida temporal de conectividad
+    elegantemente.
+\end{itemize}
+
+\subsection{ADR-08: FastAPI con WebSockets para el Panel del Defensor}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El Panel del Defensor requiere mostrar alertas en
+tiempo real desde el detector. Las opciones son: (a) FastAPI con
+WebSockets para empujar alertas al navegador, (b) polling HTTP
+periódico desde el frontend, (c) Server-Sent Events (SSE), (d) un
+sistema separado tipo MQTT broker.
+
+\textbf{Decisión:} FastAPI como framework HTTP con WebSockets para la
+comunicación de alertas en tiempo real. El detector se integra como
+componente interno del mismo proceso Python.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item FastAPI tiene soporte nativo de WebSockets sin dependencias
+    adicionales.
+  \item La integración del detector como componente interno (mismo
+    proceso) permite compartir estado en memoria sin IPC, simplificando
+    el desarrollo.
+  \item WebSockets ofrecen latencia menor que polling y son
+    bidireccionales (permiten al frontend enviar comandos como
+    ``reset'' al backend).
+  \item FastAPI es asíncrono por diseño, lo que se acomoda bien al
+    patrón de eventos del detector.
+  \item Cumple el requerimiento RNF-PDE-001 (alertas en menos de 2
+    segundos) holgadamente.
+\end{itemize}
+
+\textbf{Alternativas descartadas:}
+
+\begin{itemize}
+  \item \textbf{Polling HTTP:} Simple de implementar pero ineficiente y
+    con latencia mayor.
+  \item \textbf{SSE (Server-Sent Events):} Buena alternativa
+    unidireccional pero no permite al frontend enviar comandos, lo que
+    obligaría a usar HTTP adicional para acciones como ``reset''.
+  \item \textbf{MQTT broker separado:} Sobreingeniería para un
+    laboratorio académico. Agrega un servicio que mantener.
+\end{itemize}
+
+\textbf{Consecuencias:}
+
+\begin{itemize}
+  \item El detector ahora tiene dos modos: CLI clásico (sin Panel) y
+    web (con Panel). Ambos comparten la lógica de captura y análisis.
+  \item Se introducen tres hilos en el proceso del detector cuando se
+    usa el Panel; es necesario gestionar concurrencia con cuidado
+    (cola \texttt{asyncio.Queue} thread-safe).
+\end{itemize}
+
+\subsection{ADR-09: Base de datos OUI embebida en flash de la ESP32}
+
+\textbf{Estado:} Aceptada.
+
+\textbf{Contexto:} El Panel del Atacante necesita identificar
+fabricantes a partir de direcciones MAC durante el reconocimiento de
+clientes. Las opciones son: (a) consultar una API externa
+(macvendors.com, IEEE), (b) embeber una base de datos local en la
+ESP32, (c) hacer el lookup en el frontend de la laptop.
+
+\textbf{Decisión:} Embeber un subconjunto de la base de datos pública
+IEEE en la flash de la ESP32 (aproximadamente 5\,000 entradas), con un
+endpoint \texttt{GET /oui-lookup} que la consulta.
+
+\textbf{Justificación:}
+
+\begin{itemize}
+  \item El laboratorio opera sin internet; depender de una API externa
+    no es viable.
+  \item La base IEEE completa tiene unas 30\,000 entradas; embeber
+    únicamente las 5\,000 más comunes mantiene el tamaño en flash en
+    el orden de 100--300 KB, holgado dentro de los 2.5--3 MB
+    disponibles después del bootloader.
+  \item Mantiene la API REST como única interfaz, manteniendo la
+    coherencia del diseño.
+\end{itemize}
+
+\textbf{Alternativas descartadas:}
+
+\begin{itemize}
+  \item \textbf{API externa:} Requiere internet; descartada por el
+    constraint de aislamiento.
+  \item \textbf{Lookup en el frontend:} Movería la base de datos OUI
+    a la laptop, pero acopla el frontend con un dataset que es
+    conceptualmente parte del backend. Además duplica el dato si
+    múltiples Operadores quieren usar el panel.
+\end{itemize}
+
+\textbf{Consecuencias:}
+
+\begin{itemize}
+  \item La base embebida queda fija al momento de flashear el firmware
+    y no se actualiza. Para fines del laboratorio (cuyas víctimas son
+    conocidas), esto es aceptable.
+  \item OUIs no presentes en la base retornan ``Fabricante
+    desconocido''. El frontend debe manejar este caso.
+\end{itemize}
+
+% ==============================================================================
+\section{Trazabilidad: Componentes Arquitectónicos a Requerimientos}
+% ==============================================================================
+
+\begin{datatable}{L{4.5cm} L{11cm}}{Componente Arquitectónico & Requerimientos del SRS Cubiertos}
+\drow{Controlador de Cadena (off)   & RF-OFF-001, RF-OFF-002, RF-OFF-013, RF-OFF-015}
+\drow{Módulo Beacon Flood (off)     & RF-OFF-003, RF-OFF-004}
+\drow{Módulo Deauth (off)           & RF-OFF-005, RF-OFF-006}
+\drow{Módulo Evil Twin (off)        & RF-OFF-007, RF-OFF-008, RF-OFF-009}
+\drow{Portal Cautivo (off)          & RF-OFF-010, RF-OFF-011, RF-OFF-012, RNF-SYS-005}
+\drow{Interfaz Serial (off)         & RF-OFF-014}
+\drow{Validador Ético (off)         & RNF-SYS-004, RF-OFF-025}
+\drow{AP de Control (off)           & RF-OFF-016}
+\drow{Servidor API REST (off)       & RF-OFF-017 a RF-OFF-023, RF-OFF-025}
+\drow{Reconocedor (off)             & RF-OFF-017, RF-OFF-018}
+\drow{Lookup OUI (off)              & RF-OFF-019, RF-OFF-024}
+\drow{Capturador de Frames (def)    & RF-DEF-001, RF-DEF-002}
+\drow{Despachador (def)             & RF-DEF-014}
+\drow{Analizador Beacon Flood (def) & RF-DEF-004, RNF-DEF-006}
+\drow{Analizador Deauth (def)       & RF-DEF-005, RNF-DEF-006}
+\drow{Analizador Evil Twin (def)    & RF-DEF-006, RF-DEF-015, RNF-DEF-006}
+\drow{Correlador de Cadena (def)    & RF-DEF-007}
+\drow{Reporte / Alertas (def)       & RF-DEF-008, RF-DEF-009, RNF-DEF-002, RNF-DEF-004}
+\drow{Servidor FastAPI (def)        & RF-PDE-001, RF-PDE-002, RF-PDE-009}
+\drow{WebSocket Manager (def)       & RF-PDE-003, RF-PDE-005, RF-PDE-006, RNF-PDE-001}
+\drow{Manejador de Sesión (def)     & RF-DEF-012, RF-DEF-013, RF-PDE-004}
+\drow{Configuración (def)           & RF-DEF-003, RF-DEF-010, RF-PDE-008}
+\end{datatable}
+
+\end{document}

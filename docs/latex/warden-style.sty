@@ -1,0 +1,301 @@
+%% warden-style.sty
+%% Estilo compartido para toda la documentacion de ingenieria del proyecto WARDEN
+%% Wireless Attack Reproduction and Detection Environment
+%%
+%% Definir ANTES de \usepackage{warden-style}:
+%%   \newcommand{\doctitle}{Titulo del Documento}
+%%   \newcommand{\docsubtitle}{Subtitulo del Documento}
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{warden-style}[2026/04/01 WARDEN Engineering Document Style]
+
+% -- Paquetes base -------------------------------------------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{mathptmx}
+\usepackage[scaled=0.92]{helvet}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{setspace}
+\setstretch{1.15}
+
+% -- Geometria de pagina -------------------------------------------------------
+\usepackage[
+  a4paper,
+  top=2.5cm, bottom=2.5cm,
+  left=2.5cm, right=2.5cm,
+  headheight=15pt
+]{geometry}
+
+% -- Colores -------------------------------------------------------------------
+\usepackage[table]{xcolor}
+\definecolor{wardendark}{HTML}{1A1A2E}
+\definecolor{wardenmid}{HTML}{444444}
+\definecolor{wardengray}{HTML}{666666}
+\definecolor{wardenlightgray}{HTML}{AAAAAA}
+\definecolor{wardenrule}{HTML}{CCCCCC}
+\definecolor{wardenhighlight}{HTML}{E8E8E8}
+\definecolor{wardensubhead}{HTML}{F2F2F2}
+
+% -- Encabezado y pie de pagina ------------------------------------------------
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyhead[L]{\small\sffamily\color{wardengray}WARDEN - \doctitle}
+\fancyhead[R]{\small\sffamily\color{wardenlightgray}UNIVERSIDAD TECNOLÓGICA DE PEREIRA}
+\fancyfoot[L]{\small\rmfamily\color{wardenlightgray}%
+  \copyright\ \the\year\ Proyecto WARDEN. Uso educativo.}
+\fancyfoot[R]{\small\rmfamily\color{wardenlightgray}Página \thepage\ de \pageref{LastPage}}
+
+% -- Titulos de seccion --------------------------------------------------------
+\usepackage{titlesec}
+\titleformat{\section}
+  {\sffamily\Large\bfseries\color{wardenmid}}
+  {\thesection.}{0.7em}{}
+  [\vspace{1pt}{\color{wardenmid}\rule{\linewidth}{0.5pt}}]
+\titleformat{\subsection}
+  {\sffamily\large\bfseries\color{wardenmid}}
+  {\thesubsection}{0.7em}{}
+\titleformat{\subsubsection}
+  {\sffamily\normalsize\bfseries\color{wardengray}}
+  {\thesubsubsection}{0.7em}{}
+\titlespacing{\section}{0pt}{18pt}{8pt}
+\titlespacing{\subsection}{0pt}{14pt}{6pt}
+\titlespacing{\subsubsection}{0pt}{10pt}{4pt}
+
+% -- Tabla de contenidos -------------------------------------------------------
+\usepackage{tocloft}
+\renewcommand{\cftsecfont}{\sffamily\bfseries}
+\renewcommand{\cftsubsecfont}{\sffamily}
+\renewcommand{\cftsecpagefont}{\sffamily\bfseries}
+\renewcommand{\cftsubsecpagefont}{\sffamily}
+\setlength{\cftbeforesecskip}{4pt}
+
+% -- Listas --------------------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.5em, itemsep=2pt, topsep=4pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=1.5em, itemsep=2pt, topsep=4pt, parsep=0pt}
+
+% -- Tablas --------------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{colortbl}
+\usepackage{multirow}
+\usepackage{ragged2e}
+
+% Tipos de columna para texto con ajuste
+\newcolumntype{L}[1]{>{\RaggedRight\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\Centering\arraybackslash}p{#1}}
+
+% -- Hyperref ------------------------------------------------------------------
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks = true,
+  linkcolor  = wardendark,
+  urlcolor   = wardendark,
+  citecolor  = wardendark
+}
+
+% ==============================================================================
+% PORTADA
+% \wardencoverpage{Version}{Fecha}{Estado}
+% ==============================================================================
+\newcommand{\wardencoverpage}[3]{%
+  \thispagestyle{empty}
+  \begin{center}
+    {\color{wardendark}\rule{\textwidth}{4pt}}
+    \vspace{2.5cm}
+
+    {\small\sffamily\color{wardenlightgray}%
+      WARDEN - DOCUMENTACIÓN DE INGENIERÍA DE SOFTWARE}
+
+    \vspace{1cm}
+
+    {\Huge\sffamily\bfseries\color{wardenmid}\doctitle}
+
+    \vspace{0.5cm}
+
+    {\large\sffamily\itshape\color{wardengray}\docsubtitle}
+
+    \vspace{2.5cm}
+  \end{center}
+
+  {\color{wardenrule}\rule{\textwidth}{0.5pt}}
+  \vspace{0.5cm}
+
+  \begin{center}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{%
+      >{\sffamily\bfseries\small\color{wardenmid}}L{3.5cm}%
+      >{\small\rmfamily}L{8cm}}
+      \cellcolor{wardensubhead}Versión     & \cellcolor{wardensubhead}#1 \\
+      \cellcolor{white}Fecha               & \cellcolor{white}#2          \\
+      \cellcolor{wardensubhead}Estado      & \cellcolor{wardensubhead}#3 \\
+      \cellcolor{white}Proyecto            & \cellcolor{white}%
+        Wireless Attack Reproduction and Detection Environment \\
+      \cellcolor{wardensubhead}Autores     & \cellcolor{wardensubhead}%
+        Santiago Valencia León \newline Daniel Yadir Perea Murillo \newline Sofia Valdez Londono \\
+      \cellcolor{white}Revisado por        & \cellcolor{white}             \\
+      \cellcolor{wardensubhead}Aprobado por & \cellcolor{wardensubhead}   \\
+    \end{tabular}
+  \end{center}
+
+  \vspace{0.5cm}
+  {\color{wardenrule}\rule{\textwidth}{0.5pt}}
+  \vspace{1cm}
+
+  \begin{center}
+    {\small\rmfamily\itshape\color{wardenlightgray}%
+      Proyecto académico de uso estrictamente educativo.\\
+      Universidad Tecnológica de Pereira - Facultad de Ingeniería.}
+  \end{center}
+  \newpage
+}
+
+% ==============================================================================
+% HISTORIAL DE REVISIONES
+% ==============================================================================
+\newcommand{\revrow}[4]{#1 & #2 & #3 & #4 \\}
+
+\newenvironment{wardenrevisions}{%
+  \section*{Historial de Revisiones}
+  \addcontentsline{toc}{section}{Historial de Revisiones}
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \rowcolors{2}{white}{wardenhighlight}
+  \begin{longtable}{L{1.8cm} L{2.8cm} L{3.2cm} L{7.5cm}}
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries Versión &
+    \color{white}\sffamily\bfseries Fecha &
+    \color{white}\sffamily\bfseries Autor &
+    \color{white}\sffamily\bfseries Descripción de Cambios \\
+  \endhead
+}{%
+  \end{longtable}
+  \newpage
+}
+
+% ==============================================================================
+% TABLA DE DETALLE DE CASO DE USO
+% ==============================================================================
+\newcommand{\ucrow}[2]{%
+  \cellcolor{wardensubhead}{\sffamily\bfseries\small\color{wardenmid}#1} &
+  \cellcolor{white}{\rmfamily\small #2} \\[2pt]
+}
+
+\newenvironment{uctable}{%
+  \renewcommand{\arraystretch}{1.6}
+  \begin{tabular}{L{3.2cm} L{12.6cm}}
+    \toprule
+}{%
+  \bottomrule
+  \end{tabular}
+}
+
+% ==============================================================================
+% TABLA DE DATOS GENERICA
+% ==============================================================================
+\newcommand{\drow}[1]{#1 \\}
+
+\newenvironment{datatable}[2]{%
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \rowcolors{2}{white}{wardenhighlight}
+  \begin{longtable}{#1}
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries #2 \\
+  \endfirsthead
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries #2 \\
+  \endhead
+}{%
+  \end{longtable}
+}
+
+% ==============================================================================
+% TABLA DE DETALLE DE ATAQUE (para Threat Model)
+% ==============================================================================
+\newcommand{\atkrow}[2]{%
+  \cellcolor{wardensubhead}{\sffamily\bfseries\small\color{wardenmid}#1} &
+  \cellcolor{white}{\rmfamily\small #2} \\[2pt]
+}
+
+\newenvironment{atktable}{%
+  \renewcommand{\arraystretch}{1.6}
+  \begin{tabular}{L{3.5cm} L{12.3cm}}
+    \toprule
+}{%
+  \bottomrule
+  \end{tabular}
+}
+
+% ==============================================================================
+% TABLA DE REQUERIMIENTOS FUNCIONALES (6 columnas)
+% ==============================================================================
+\newcommand{\frrow}[5]{%
+  {\sffamily\bfseries\color{wardenmid}#1} & #2 & #3 & #4 & #5 & Pendiente \\
+}
+
+\newenvironment{frtable}{%
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \rowcolors{2}{white}{wardenhighlight}
+  \begin{longtable}{%
+    L{1.3cm} L{2.7cm} L{6.3cm} L{1.2cm} L{1.5cm} L{1.4cm}}
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries ID &
+    \color{white}\sffamily\bfseries Nombre &
+    \color{white}\sffamily\bfseries Descripción &
+    \color{white}\sffamily\bfseries Prioridad &
+    \color{white}\sffamily\bfseries Módulo &
+    \color{white}\sffamily\bfseries Estado \\
+  \endfirsthead
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries ID &
+    \color{white}\sffamily\bfseries Nombre &
+    \color{white}\sffamily\bfseries Descripción &
+    \color{white}\sffamily\bfseries Prioridad &
+    \color{white}\sffamily\bfseries Módulo &
+    \color{white}\sffamily\bfseries Estado \\
+  \endhead
+}{%
+  \end{longtable}
+}
+
+% ==============================================================================
+% TABLA DE REQUERIMIENTOS NO FUNCIONALES (5 columnas)
+% ==============================================================================
+\newcommand{\nfrrow}[5]{%
+  {\sffamily\bfseries\color{wardenmid}#1} & #2 & #3 & #4 & #5 \\
+}
+
+\newenvironment{nfrtable}{%
+  \renewcommand{\arraystretch}{1.3}
+  \small
+  \rowcolors{2}{white}{wardenhighlight}
+  \begin{longtable}{L{1.3cm} L{2.2cm} L{7.0cm} L{1.2cm} L{2.7cm}}
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries ID &
+    \color{white}\sffamily\bfseries Categoría &
+    \color{white}\sffamily\bfseries Requerimiento &
+    \color{white}\sffamily\bfseries Prioridad &
+    \color{white}\sffamily\bfseries Verificación \\
+  \endfirsthead
+    \rowcolor{wardendark}
+    \color{white}\sffamily\bfseries ID &
+    \color{white}\sffamily\bfseries Categoría &
+    \color{white}\sffamily\bfseries Requerimiento &
+    \color{white}\sffamily\bfseries Prioridad &
+    \color{white}\sffamily\bfseries Verificación \\
+  \endhead
+}{%
+  \end{longtable}
+}
+
+\endinput

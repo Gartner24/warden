@@ -1,0 +1,690 @@
+\documentclass[11pt,a4paper]{article}
+
+\newcommand{\doctitle}{Documento de Visión}
+\newcommand{\docsubtitle}{WARDEN - Wireless Attack Reproduction and Detection Environment}
+
+\usepackage{warden-style}
+
+\begin{document}
+
+% -- Portada -------------------------------------------------------------------
+\wardencoverpage{0.1}{Abril 2026}{Borrador}
+
+% -- Historial de Revisiones ---------------------------------------------------
+\begin{wardenrevisions}
+\revrow{0.1}{Abril 2026}{Santiago Valencia León}{Borrador inicial}
+\end{wardenrevisions}
+
+% -- Tabla de Contenidos -------------------------------------------------------
+\tableofcontents
+\newpage
+
+% ==============================================================================
+\section{Introducción}
+% ==============================================================================
+
+\subsection{Propósito}
+Este documento define la visión del proyecto WARDEN (Wireless Attack
+Reproduction and Detection Environment), un sistema experimental dual
+compuesto por un subsistema ofensivo y un subsistema defensivo, desarrollado
+con fines estrictamente académicos y educativos. El proyecto reproduce, en un
+ambiente de laboratorio controlado, una cadena realista de tres ataques
+encadenados contra redes WiFi y, simultáneamente, los detecta mediante
+captura pasiva del medio inalámbrico.
+
+Este documento establece el contexto del problema, la solución propuesta, los
+escenarios de ataque y detección, los usuarios objetivo, el alcance del
+proyecto y los objetivos de alto nivel que orientan todas las decisiones de
+ingeniería subsecuentes. Está dirigido a los integrantes del equipo de
+desarrollo, al profesor evaluador de la asignatura, y a cualquier persona que
+requiera entender qué es WARDEN y por qué existe.
+
+\subsection{Naturaleza Académica del Proyecto}
+WARDEN es un proyecto desarrollado en el contexto de la asignatura Teoría de
+Sistemas de la Universidad Tecnológica de Pereira. Su finalidad es
+exclusivamente pedagógica: permitir al equipo de desarrollo y a los
+evaluadores del curso comprender, de manera empírica, cómo funcionan los
+ataques WiFi a nivel de capa de enlace y cómo pueden ser detectados desde el
+otro lado del medio inalámbrico.
+
+El sistema se construye, prueba y ejecuta en un ambiente de laboratorio
+controlado compuesto exclusivamente por equipos propiedad de los integrantes
+del proyecto. En ningún momento se realizan pruebas sobre redes, dispositivos
+o usuarios ajenos al equipo. El código fuente, la documentación y los
+resultados experimentales tienen como destino el aprendizaje técnico y la
+entrega académica de la asignatura, y no están orientados al ataque o
+comprometimiento de infraestructura real.
+
+\subsection{Alcance del Documento}
+Este Documento de Visión cubre la totalidad del sistema WARDEN, incluyendo
+sus dos subsistemas principales:
+
+\begin{itemize}
+  \item \textbf{Subsistema Ofensivo:} Atacante basado en ESP32 que ejecuta una
+    cadena de tres ataques encadenados (Beacon Flooding, Deauthentication,
+    Evil Twin con captura de credenciales).
+  \item \textbf{Subsistema Defensivo:} Detector pasivo basado en el adaptador
+    Panda Wireless PAU0B AC600 y software de análisis en Python, que
+    identifica cada fase de la cadena ofensiva y emite alertas en tiempo real.
+\end{itemize}
+
+El detalle técnico y narrativo del subsistema ofensivo se encuentra en el
+documento complementario \emph{Threat Model y Cadena de Ataque}, mientras que
+los detalles de requerimientos, arquitectura y diseño están desarrollados en
+los documentos correspondientes del proyecto.
+
+\subsection{Definiciones y Acrónimos}
+
+\begin{datatable}{L{3cm} L{12.3cm}}{Término & Definición}
+\drow{WARDEN   & Wireless Attack Reproduction and Detection Environment. Nombre del proyecto.}
+\drow{IDS      & Intrusion Detection System. Sistema de Detección de Intrusiones}
+\drow{WIDS     & Wireless Intrusion Detection System. Variante de IDS especializada en redes inalámbricas. Categoría técnica del subsistema defensivo.}
+\drow{AP       & Access Point. Punto de acceso inalámbrico}
+\drow{Rogue AP & Punto de acceso no autorizado, generalmente malicioso}
+\drow{SSID     & Service Set Identifier. Nombre público de una red WiFi}
+\drow{BSSID    & Basic Service Set Identifier. Dirección MAC del punto de acceso}
+\drow{MAC      & Media Access Control. Dirección física de un dispositivo de red}
+\drow{ESP32    & Microcontrolador de bajo costo con capacidades WiFi y Bluetooth fabricado por Espressif Systems}
+\drow{Modo Monitor & Modo de operación de un adaptador WiFi que permite capturar todos los frames 802.11 del entorno sin asociarse a ninguna red}
+\drow{Frame 802.11 & Unidad de datos del protocolo WiFi a nivel de capa de enlace}
+\drow{Evil Twin & Ataque que crea un AP falso imitando el SSID de uno legítimo}
+\drow{Deauth   & Deauthentication. Frame de gestión que desconecta clientes de un AP}
+\drow{Beacon   & Frame de gestión emitido periódicamente por un AP para anunciar su presencia}
+\drow{Beacon Flooding & Ataque que consiste en emitir un número elevado de beacons falsos para saturar el entorno inalámbrico}
+\drow{Portal Cautivo & Página web mostrada automáticamente por un cliente al conectarse a una red WiFi abierta, típicamente para autenticación o aceptación de términos}
+\drow{MITRE ATT\&CK & Matriz pública de tácticas y técnicas adversarias documentadas, mantenida por MITRE Corporation}
+\drow{Kill Chain & Modelo conceptual de las fases secuenciales de un ataque cibernético}
+\drow{PCAP     & Packet Capture. Formato de archivo para almacenar capturas de tráfico de red}
+\drow{Scapy    & Biblioteca de Python para manipulación y análisis de paquetes de red}
+\drow{RF       & Radiofrecuencia. Medio físico de transmisión del protocolo WiFi}
+\drow{ROE      & Rules of Engagement. Reglas de ejecución de un ejercicio ofensivo}
+\end{datatable}
+
+\subsection{Referencias}
+\begin{itemize}
+  \item IEEE Std 802.11-2020. Wireless LAN Medium Access Control (MAC) and
+    Physical Layer (PHY) Specifications.
+  \item Ley 1273 de 2009 (República de Colombia). De la protección de la
+    información y de los datos.
+  \item MITRE ATT\&CK Framework (\texttt{https://attack.mitre.org}).
+  \item RFC 2119. Palabras clave para indicar niveles de requerimiento.
+  \item Documentación oficial de Scapy (\texttt{https://scapy.net}).
+  \item Documentación oficial de ESP-IDF (\texttt{https://docs.espressif.com}).
+  \item Documento WARDEN \emph{Threat Model y Cadena de Ataque}.
+\end{itemize}
+
+% ==============================================================================
+\section{Planteamiento del Problema}
+% ==============================================================================
+
+\subsection{Contexto}
+Las redes WiFi se han convertido en el medio de conectividad predominante en
+hogares, empresas e instituciones educativas. Sin embargo, la naturaleza
+física del medio inalámbrico, la radiofrecuencia, expone al protocolo 802.11
+a una superficie de ataque que no existe en las redes cableadas: cualquier
+dispositivo con una antena dentro del rango de cobertura puede observar,
+interferir o suplantar comunicaciones sin necesidad de acceso físico a la
+infraestructura.
+
+A pesar de esta exposición, la mayoría de los usuarios finales, e incluso
+muchos administradores de red, desconocen los mecanismos por los cuales
+ocurren los ataques a nivel de capa de enlace del protocolo 802.11. Casos
+documentados como las campañas DarkHotel (Kaspersky, 2007 en adelante), los
+ataques de APT28 contra hoteles de viajeros frecuentes (FireEye, 2017), y los
+ejercicios de prueba de concepto presentados en conferencias como DEF CON y
+Black Hat, demuestran que los ataques WiFi son una técnica activa,
+contemporánea y accesible para atacantes con bajo presupuesto.
+
+Desde la perspectiva de la teoría de sistemas, una red WiFi y su entorno
+inmediato conforman un sistema abierto con múltiples componentes
+interdependientes (AP, clientes, atacantes potenciales, observadores) cuya
+interacción puede ser modelada, observada y caracterizada. WARDEN aborda esta
+realidad construyendo dos subsistemas complementarios y simétricos: un
+subsistema ofensivo que reproduce empíricamente una cadena realista de
+ataques, y un subsistema defensivo que la detecta. La interacción entre
+ambos, observable y mensurable en tiempo real, es el objeto de estudio del
+proyecto.
+
+\subsection{El Problema}
+Los problemas específicos que aborda este proyecto son:
+
+\begin{itemize}
+  \item Los tres ataques considerados (Beacon Flooding, Deauthentication y
+    Evil Twin) suelen estudiarse de forma aislada en el material académico
+    disponible, perdiendo la dimensión más realista del fenómeno: en
+    incidentes reales, estos ataques se ejecutan \textbf{encadenados} como
+    fases de una misma operación de robo de credenciales.
+  \item El material educativo sobre estos ataques tiende a centrarse
+    exclusivamente en la perspectiva ofensiva (cómo se ejecuta el ataque) o
+    exclusivamente en la perspectiva defensiva (cómo se detecta), pero rara
+    vez integra ambas en un mismo ejercicio que permita observar la
+    interacción ataque-defensa en tiempo real.
+  \item La manipulación de frames 802.11 a bajo nivel con hardware común
+    (por ejemplo, la tarjeta WiFi integrada de una laptop) está deliberadamente
+    restringida por los drivers del sistema operativo, lo cual dificulta la
+    reproducción experimental de los ataques. Esto deja un vacío didáctico
+    entre los conceptos teóricos y la práctica real.
+  \item No se encuentra un ejemplo académico claramente delimitado que combine
+    un generador de cadena de ataques basado en un microcontrolador accesible
+    (ESP32) con un detector pasivo basado en un adaptador WiFi con modo
+    monitor, formando un sistema cerrado y autocontenido para fines
+    educativos.
+\end{itemize}
+
+\subsection{Impacto}
+La consecuencia de esta brecha es que los conceptos de seguridad inalámbrica
+permanecen abstractos para estudiantes y profesionales en formación. El
+desarrollo de un sistema integrado como WARDEN permite:
+
+\begin{itemize}
+  \item Materializar en hardware y software accesibles tanto la generación
+    como la detección de tres ataques comunes, haciendo posible observar
+    empíricamente la interacción atacante-defensor.
+  \item Comprender, desde una perspectiva sistémica, cómo componentes
+    heterogéneos (un microcontrolador ofensivo, dispositivos víctima, un
+    adaptador WiFi especializado y un computador defensor) pueden integrarse
+    para modelar un escenario de ciberseguridad completo.
+  \item Estudiar la lógica encadenada de un ataque real, donde las fases
+    individuales toman significado solo cuando se observan en su secuencia
+    completa.
+  \item Generar un recurso didáctico reproducible que puede ser replicado,
+    extendido o utilizado como base para trabajos futuros en seguridad
+    inalámbrica.
+\end{itemize}
+
+% ==============================================================================
+\section{Declaración de Visión}
+% ==============================================================================
+
+Para estudiantes y profesionales en formación interesados en comprender la
+seguridad de redes inalámbricas desde una perspectiva empírica e integral,
+\textbf{WARDEN} es un sistema experimental dual de ataque y detección que
+permite, mediante hardware accesible (una ESP32 como generador de la cadena
+de ataques y un adaptador Panda Wireless PAU0B AC600 como sensor pasivo),
+reproducir y detectar una cadena realista de tres ataques encadenados contra
+redes WiFi: Beacon Flooding, Deauthentication y Evil Twin con robo de
+credenciales mediante portal cautivo falso.
+
+A diferencia de suites de pentesting profesional orientadas únicamente al
+ataque (como Aircrack-ng, Wifiphisher o Kismet en sus modos ofensivos),
+WARDEN integra simétricamente la perspectiva defensiva, permitiendo observar
+en tiempo real cómo cada fase del ataque produce evidencias detectables. A
+diferencia de productos WIDS comerciales (Cisco CleanAir, Aruba RFProtect,
+Fortinet FortiGate Wireless), WARDEN no busca desempeño empresarial ni
+cobertura exhaustiva, sino servir como un modelo pedagógico claro,
+reproducible y de bajo costo donde el ataque y la detección son ambos
+ciudadanos de primera clase.
+
+WARDEN opera bajo dos principios fundamentales: \textbf{contención total
+del laboratorio} (todos los ataques se dirigen exclusivamente a equipos
+propiedad del equipo) y \textbf{detección estrictamente pasiva} (el
+detector solo escucha el medio, jamás inyecta tráfico). Las alertas y
+resultados se emiten por consola con la información mínima necesaria para
+identificar cada fase del ataque y sus metadatos asociados.
+
+% ==============================================================================
+\section{Subsistemas Principales}
+% ==============================================================================
+
+WARDEN se compone de dos subsistemas funcionalmente independientes pero
+diseñados para operar de forma complementaria.
+
+\subsection{Subsistema Ofensivo}
+
+\textbf{Componente principal:} Microcontrolador ESP32 con firmware
+desarrollado por el equipo.
+
+\textbf{Función:} Reproducir una cadena de ataques WiFi en tres fases,
+dirigida exclusivamente a los dispositivos víctima del laboratorio.
+
+\textbf{Cadena de ataques (resumen):}
+
+\begin{enumerate}
+  \item \textbf{Fase 1 - Beacon Flooding (reconocimiento y distracción):} La
+    ESP32 emite un número elevado de beacons falsos con SSIDs aleatorios para
+    saturar el entorno inalámbrico de la víctima.
+  \item \textbf{Fase 2 - Deauthentication (aislamiento de la víctima):} La
+    ESP32 envía frames de deautenticación dirigidos al BSSID del router
+    legítimo de laboratorio, forzando la desconexión de los clientes víctima
+    (Redmi Note 7 y Dell Latitude E6220).
+  \item \textbf{Fase 3 - Evil Twin con portal cautivo falso (explotación):}
+    La ESP32 crea un AP abierto que imita el SSID de la red legítima. Cuando
+    la víctima se reconecta automáticamente, se le presenta un portal cautivo
+    falso desarrollado por el equipo, que captura las credenciales ingresadas
+    (con datos ficticios para fines exclusivamente demostrativos).
+\end{enumerate}
+
+\textbf{Atacante simulado:} Actor oportunista cercano operando en un espacio
+público compartido, con motivación de robo de credenciales mediante
+suplantación de AP. Este perfil corresponde a campañas reales documentadas
+como DarkHotel y APT28.
+
+\textbf{Mapeo a MITRE ATT\&CK:}
+
+\begin{datatable}{L{2.5cm} L{4cm} L{8.8cm}}{Técnica & Nombre & Aplicación en WARDEN}
+\drow{T1498 & Network Denial of Service & Fase 1: Beacon Flooding satura el entorno}
+\drow{T1499 & Endpoint Denial of Service & Fase 2: Deauth desconecta clientes legítimos}
+\drow{T1557 & Adversary-in-the-Middle    & Fase 3: Evil Twin se posiciona entre cliente y red}
+\drow{T1056.003 & Web Portal Capture     & Fase 3: Captura de credenciales por portal cautivo}
+\end{datatable}
+
+El detalle completo del modelado de amenaza, narrativa del atacante, técnicas
+empleadas y reglas de ejecución se encuentra en el documento WARDEN
+\emph{Threat Model y Cadena de Ataque}.
+
+\subsection{Subsistema Defensivo}
+
+\textbf{Componente principal:} Estación de detección compuesta por una laptop
+con Arch Linux y el adaptador Panda Wireless PAU0B AC600 en modo monitor.
+
+\textbf{Función:} Capturar pasivamente el espectro 802.11 en la banda 2.4 GHz
+e identificar la firma de cada fase de la cadena ofensiva en tiempo real,
+emitiendo alertas estructuradas por consola.
+
+\textbf{Capacidades de detección:}
+
+\begin{enumerate}
+  \item \textbf{Detección de Beacon Flooding:} Identificación de tasas
+    anómalas de beacons únicos por segundo y detección de rangos sospechosos
+    de BSSIDs falsos.
+  \item \textbf{Detección de Deauthentication:} Identificación de frames de
+    deauth dirigidos al BSSID protegido, detección de tasas anómalas y de
+    direccionalidad sospechosa.
+  \item \textbf{Detección de Evil Twin:} Identificación de SSIDs duplicados
+    con BSSIDs distintos al BSSID legítimo conocido, detección de cambios
+    repentinos en las características de seguridad anunciadas (por ejemplo,
+    SSID que normalmente requiere WPA2 apareciendo como abierto).
+  \item \textbf{Correlación de cadena (objetivo deseable):} Detección de
+    patrones que sugieren ataques encadenados: Beacon Flood seguido de Deauth
+    seguido de aparición de Evil Twin en un intervalo corto.
+\end{enumerate}
+
+\textbf{Categoría técnica:} WIDS pasivo basado en firmas y heurísticas
+explícitas. El subsistema defensivo no es una respuesta automatizada (no es
+un IPS); su función se limita a detectar y reportar.
+
+% ==============================================================================
+\section{Escenario del Laboratorio}
+% ==============================================================================
+
+\subsection{Topología Física}
+
+El laboratorio WARDEN está compuesto por cinco elementos físicos
+interactuando exclusivamente a través del medio inalámbrico en la banda 2.4
+GHz.
+
+\begin{datatable}{L{4cm} L{4.5cm} L{6.8cm}}{Elemento & Rol & Descripción}
+\drow{Router de laboratorio & Red legítima objetivo & Router económico adquirido específicamente para el proyecto, configurado con SSID \texttt{LAB\_WARDEN\_UTP} y desconectado de internet. BSSID protegido por el subsistema defensivo.}
+\drow{Redmi Note 7 (MIUI 12.5) & Víctima primaria & Cliente Android conectado al router legítimo. Recibe la cadena completa de ataques. Su comportamiento de reconexión automática y manejo de portales cautivos lo hacen el objetivo más realista del escenario.}
+\drow{Dell Latitude E6220 (Ubuntu Server 22.04.5 LTS) & Víctima secundaria / testigo & Cliente Linux conectado al router legítimo. Recibe Beacon Flood y Deauth. Sus logs del sistema (\texttt{dmesg}, \texttt{journalctl}) son evidencia técnica de los ataques sufridos.}
+\drow{ESP32 & Atacante & Microcontrolador ejecutando el firmware ofensivo de WARDEN. Genera la cadena de ataques contra los BSSID y MAC del laboratorio.}
+\drow{Laptop Arch Linux + Panda PAU0B & Detector & Estación con adaptador en modo monitor capturando pasivamente todo el espectro 802.11. Ejecuta el software detector en Python con Scapy.}
+\end{datatable}
+
+\subsection{Diagrama Conceptual}
+
+La interacción entre los elementos puede representarse así:
+
+\vspace{0.3cm}
+\begin{verbatim}
++-------------------+         +-----------------------+
+|  ROUTER LEGITIMO  | <-----> |  REDMI NOTE 7         |
+|  LAB_WARDEN_UTP   |   WiFi  |  (victima primaria)   |
+|  BSSID protegido  |         +-----------------------+
++-------------------+
+         ^                    +-----------------------+
+         |                    |  DELL LATITUDE E6220  |
+         |             <----> |  (victima secundaria) |
+         |                    +-----------------------+
+         |
+         | (Cadena ofensiva por radiofrecuencia)
+         |
++--------+----------+
+|      ESP32        |
+|     ATACANTE      |
+|  Fase 1: Beacons  |
+|  Fase 2: Deauth   |
+|  Fase 3: Evil Twin|
++-------------------+
+
+       +================================================+
+       |  ARCH LINUX + PANDA PAU0B (modo monitor)       |
+       |  DETECTOR PASIVO                                |
+       |  Captura todo el espectro, no inyecta nada     |
+       |  Emite alertas por fase y de la cadena completa|
+       +================================================+
+\end{verbatim}
+
+\subsection{Banda y Canal}
+
+Toda la operación se realiza en la banda de 2.4 GHz, en un canal específico
+seleccionado durante la configuración del router de laboratorio. La elección
+del canal busca minimizar la coincidencia con redes WiFi vecinas.
+
+% ==============================================================================
+\section{Interesados y Usuarios Objetivo}
+% ==============================================================================
+
+\subsection{Interesados (Stakeholders)}
+
+\begin{datatable}{L{4cm} L{3.5cm} L{8.0cm}}{Interesado & Rol & Interés}
+\drow{Santiago Valencia León  & Integrante del equipo  & Desarrollo del sistema, aprendizaje técnico en seguridad WiFi y teoría de sistemas}
+\drow{[Integrante 2]          & Integrante del equipo  & Desarrollo del sistema, aprendizaje técnico en seguridad WiFi y teoría de sistemas}
+\drow{[Integrante 3]          & Integrante del equipo  & Desarrollo del sistema, aprendizaje técnico en seguridad WiFi y teoría de sistemas}
+\drow{Juan Andrés García Moreno & Profesor evaluador   & Evaluación del proyecto como cumplimiento de los objetivos de la asignatura Teoría de Sistemas}
+\drow{UTP, Facultad de Ingeniería & Institución académica & Formación de estudiantes en el análisis sistémico de problemas de ingeniería}
+\end{datatable}
+
+\subsection{Usuarios Objetivo}
+
+\begin{datatable}{L{3.5cm} L{5.5cm} L{6.3cm}}{Rol de Usuario & Descripción & Interacción Principal}
+\drow{Operador del Atacante & Persona que controla la ESP32 y selecciona qué fase de la cadena ejecutar. Inicia la cadena completa o cada fase individualmente. & Botón físico, selector o consola serial de la ESP32}
+\drow{Operador del Detector & Persona que ejecuta el software detector en la laptop con el Panda. Monitorea las alertas emitidas por consola en tiempo real. & Línea de comandos de la laptop detectora}
+\drow{Operador de la Víctima & Persona que opera los dispositivos víctima durante la demostración. Para fines de demostración, ingresa credenciales ficticias en el portal cautivo falso. & Interfaz nativa del Redmi Note 7 y de la Dell Latitude}
+\drow{Observador & Persona que estudia el funcionamiento del sistema sin interactuar directamente. Es el rol principal de los estudiantes espectadores y del profesor evaluador durante la demostración. & Observación del montaje completo y lectura de las salidas del detector y del atacante}
+\end{datatable}
+
+% ==============================================================================
+\section{Alcance del Producto}
+% ==============================================================================
+
+\subsection{Dentro del Alcance}
+\begin{itemize}
+  \item \textbf{Subsistema Ofensivo (ESP32):} Firmware capaz de ejecutar la
+    cadena completa de tres ataques (Beacon Flooding, Deauthentication y Evil
+    Twin con portal cautivo falso) tanto de forma encadenada automática como
+    fase por fase manual. La cadena se dirige exclusivamente al BSSID y MAC
+    del laboratorio.
+  \item \textbf{Portal Cautivo Falso:} Página web servida por la ESP32 durante
+    la fase de Evil Twin, que solicita credenciales ficticias bajo pretexto
+    de re-autenticación. Las credenciales ingresadas se registran por consola
+    serial como evidencia de captura exitosa, con fines exclusivamente
+    demostrativos.
+  \item \textbf{Infraestructura de Laboratorio:} Red WiFi dedicada compuesta
+    por un router económico desconectado de internet con SSID
+    \texttt{LAB\_WARDEN\_UTP} y dos dispositivos víctima controlados por el
+    equipo (Redmi Note 7 con MIUI 12.5 y Dell Latitude E6220 con Ubuntu Server
+    22.04.5 LTS).
+  \item \textbf{Subsistema Defensivo:} Software en Python basado en Scapy que
+    captura frames 802.11 en tiempo real desde el adaptador Panda Wireless
+    PAU0B AC600 en modo monitor y detecta cada una de las tres fases de la
+    cadena ofensiva.
+  \item \textbf{Correlación de Cadena (objetivo deseable):} Lógica de
+    correlación temporal en el detector que identifica las tres fases como
+    una secuencia coordinada y emite una alerta de cadena completa.
+  \item \textbf{Alertas por Consola:} Emisión de alertas en formato legible
+    por humanos al detectarse cada fase, incluyendo marca de tiempo, tipo de
+    ataque, BSSID afectado, MAC de origen, y contadores cuando apliquen.
+  \item \textbf{Operación en 2.4 GHz:} Todas las pruebas se realizan en la
+    banda de 2.4 GHz para garantizar compatibilidad con el chipset MT7610U.
+  \item \textbf{Capturas PCAP de Referencia:} Generación de un conjunto de
+    archivos PCAP con cadenas de ataque representativas, utilizados tanto
+    para testing del detector como para desarrollo por parte de los
+    integrantes que no disponen del adaptador Panda.
+  \item \textbf{Documentación de Ingeniería:} Documento de Visión, Threat
+    Model y Cadena de Ataque, Marco Teórico, Especificación de Requerimientos,
+    Documento de Casos de Uso, Documento de Arquitectura y Documento de
+    Diseño Detallado.
+  \item \textbf{Demostración Funcional:} Demostración en vivo del sistema
+    completo end-to-end durante la entrega del proyecto, incluyendo la
+    cadena de ataque y la detección simultánea.
+\end{itemize}
+
+\subsection{Fuera del Alcance}
+\begin{itemize}
+  \item Detección o ejecución de ataques WiFi distintos a los tres
+    encadenados (por ejemplo: KARMA, ataques contra WPS, captura de
+    handshakes WPA, ataques contra PMKID, downgrade de cifrado).
+  \item Captura real o uso real de credenciales. El portal cautivo solo
+    captura datos ficticios introducidos durante demostraciones controladas.
+  \item Crackeo offline de contraseñas o ataques de fuerza bruta sobre
+    handshakes capturados.
+  \item Interfaz gráfica de usuario en cualquiera de los subsistemas (la
+    operación es exclusivamente por línea de comandos y, en el caso del
+    portal cautivo, por una página web mínima funcional).
+  \item Prevención, bloqueo o mitigación automática de los ataques
+    detectados. El subsistema defensivo es estrictamente de detección y
+    reporte.
+  \item Captura y análisis en la banda de 5 GHz.
+  \item Soporte para redes WPA3.
+  \item Técnicas de detección basadas en aprendizaje automático o
+    estadísticas avanzadas. Solo se utilizan reglas heurísticas explícitas.
+  \item Despliegue en entornos de producción.
+  \item Integración con sistemas SIEM u otras plataformas de gestión de
+    eventos de seguridad.
+  \item Análisis forense posterior a los ataques.
+  \item Captura distribuida mediante múltiples sensores.
+  \item Soporte para sistemas operativos distintos a Linux en el subsistema
+    defensivo.
+\end{itemize}
+
+% ==============================================================================
+\section{Objetivos y Criterios de Éxito}
+% ==============================================================================
+
+\subsection{Objetivos del Subsistema Ofensivo}
+
+\begin{datatable}{L{1.4cm} L{10.3cm} L{1.9cm}}{ID & Objetivo & Prioridad}
+\drow{O-01 & Implementar Beacon Flooding capaz de emitir al menos 50 beacons únicos por segundo durante la fase 1 & Alta}
+\drow{O-02 & Implementar Deauthentication dirigido al BSSID del router de laboratorio, capaz de desconectar a las víctimas en menos de 5 segundos & Alta}
+\drow{O-03 & Implementar Evil Twin que clone el SSID del router de laboratorio y se anuncie como red abierta & Alta}
+\drow{O-04 & Implementar portal cautivo falso que registre credenciales ficticias ingresadas durante la fase 3 & Alta}
+\drow{O-05 & Permitir ejecución encadenada automática y ejecución manual fase por fase & Alta}
+\drow{O-06 & Mapear cada fase a una técnica documentada de la matriz MITRE ATT\&CK & Media}
+\end{datatable}
+
+\subsection{Objetivos del Subsistema Defensivo}
+
+\begin{datatable}{L{1.4cm} L{10.3cm} L{1.9cm}}{ID & Objetivo & Prioridad}
+\drow{D-01 & Detectar la fase de Beacon Flooding con precisión superior al 90\% en el laboratorio & Alta}
+\drow{D-02 & Detectar la fase de Deauthentication con precisión superior al 90\% en el laboratorio & Alta}
+\drow{D-03 & Detectar la fase de Evil Twin identificando SSIDs duplicados con BSSID distinto al protegido & Alta}
+\drow{D-04 & Emitir alertas en consola con marca de tiempo, tipo de ataque y metadatos relevantes en menos de 2 segundos desde la detección & Alta}
+\drow{D-05 & Operar en modo completamente pasivo, sin inyectar tráfico al medio inalámbrico & Alta}
+\drow{D-06 & Soportar análisis tanto en captura en vivo como sobre archivos PCAP para fines de desarrollo y testing & Alta}
+\drow{D-07 & Identificar correlación temporal entre las tres fases y emitir alerta de cadena completa cuando ocurran en secuencia & Media}
+\end{datatable}
+
+\subsection{Objetivos Generales del Proyecto}
+
+\begin{datatable}{L{1.4cm} L{10.3cm} L{1.9cm}}{ID & Objetivo & Prioridad}
+\drow{G-01 & Producir la documentación completa de ingeniería del proyecto & Alta}
+\drow{G-02 & Realizar una demostración funcional end-to-end durante la entrega, mostrando la cadena ofensiva y la detección simultánea & Alta}
+\drow{G-03 & Generar capturas PCAP de referencia para evaluación y reproducibilidad & Media}
+\drow{G-04 & Mantener el código fuente y la documentación en un repositorio Git público & Media}
+\end{datatable}
+
+\subsection{Criterios de Éxito}
+\begin{itemize}
+  \item Los objetivos O-01 a O-05, D-01 a D-06, y G-01 a G-02 se cumplen y
+    se demuestran en vivo durante la sesión de entrega.
+  \item Durante la demostración, la cadena de ataque ejecutada por la ESP32
+    es detectada por el subsistema defensivo en al menos 9 de 10 ejecuciones.
+  \item El portal cautivo falso captura credenciales ficticias durante la
+    demostración y las muestra por consola serial.
+  \item Los seis documentos de ingeniería están completos, revisados y
+    compilados en formato PDF al momento de la entrega.
+  \item La documentación y el código permiten que cualquier integrante del
+    equipo responda preguntas técnicas fundamentales del sistema sin
+    necesidad de consultar a otro integrante.
+\end{itemize}
+
+% ==============================================================================
+\section{Restricciones}
+% ==============================================================================
+
+\subsection{Restricciones Técnicas}
+\begin{itemize}
+  \item El sistema operativo del subsistema defensivo debe ser Linux. Se han
+    validado dos distribuciones: Arch Linux (estación principal) y Ubuntu
+    Server 22.04.5 LTS (dispositivo víctima secundario).
+  \item El adaptador WiFi para captura debe soportar modo monitor. Se utiliza
+    el Panda Wireless PAU0B AC600 con chipset MediaTek MT7610U.
+  \item La operación se limita a la banda de 2.4 GHz debido a limitaciones
+    conocidas de estabilidad del driver MT7610U en 5 GHz para modo monitor.
+  \item El subsistema ofensivo utiliza una ESP32 estándar. No se requiere una
+    variante específica (ESP32-S3, ESP32-C3, etc.).
+  \item El lenguaje de programación del subsistema defensivo es Python 3
+    utilizando la biblioteca Scapy.
+  \item El firmware de la ESP32 se desarrolla utilizando Arduino-ESP32 o
+    ESP-IDF.
+  \item El portal cautivo falso se sirve desde la ESP32 mediante un servidor
+    web embebido y un servidor DNS local que redirige todas las consultas a
+    la ESP32.
+\end{itemize}
+
+\subsection{Restricciones de Diseño}
+\begin{itemize}
+  \item El subsistema defensivo debe ser completamente pasivo: no puede
+    inyectar frames ni modificar de ninguna forma el tráfico del medio
+    inalámbrico.
+  \item La detección debe realizarse en tiempo real sobre el flujo de
+    captura, no sobre archivos PCAP almacenados. No obstante, el mismo código
+    del detector debe poder operar sobre archivos PCAP para fines de
+    desarrollo y testing.
+  \item Los ataques generados por la ESP32 deben dirigirse exclusivamente al
+    BSSID del router de laboratorio o a las MAC de los dispositivos víctima
+    del equipo. Bajo ninguna circunstancia se dirigirán a redes o
+    dispositivos ajenos al proyecto.
+  \item El portal cautivo falso debe ser claramente identificado como un
+    componente de demostración educativa, y solo aceptará datos ficticios
+    durante las pruebas.
+  \item El sistema completo debe funcionar sin conexión a internet.
+\end{itemize}
+
+\subsection{Restricciones de Recursos}
+\begin{itemize}
+  \item El proyecto debe completarse en un plazo de tres a cuatro semanas a
+    partir de la semana 12 del semestre académico.
+  \item El equipo está conformado por tres integrantes.
+  \item El presupuesto para adquisición de hardware adicional (router de
+    laboratorio) es asumido por el equipo.
+  \item Solo un integrante del equipo dispone del adaptador Panda Wireless
+    PAU0B AC600. En consecuencia, las capturas en vivo solo pueden realizarse
+    desde su estación.
+\end{itemize}
+
+\subsection{Restricciones Éticas y Legales}
+El presente proyecto involucra la ejecución de ataques contra redes WiFi en
+un entorno experimental con finalidad estrictamente educativa. Dado que la
+interceptación de comunicaciones inalámbricas y el acceso no autorizado a
+sistemas informáticos están tipificados como delitos en la legislación
+colombiana bajo la Ley 1273 de 2009 (artículos 269A sobre acceso abusivo a
+sistema informático, 269C sobre interceptación de datos informáticos y 269D
+sobre daño informático), resulta indispensable ejecutar la totalidad de las
+pruebas en un ambiente controlado que garantice que ninguna red, dispositivo
+o usuario ajeno al proyecto se vea afectado.
+
+\textbf{Definición del ambiente controlado.} A diferencia de otros escenarios
+de ciberseguridad donde el aislamiento se logra mediante máquinas virtuales,
+en este proyecto el aislamiento mediante virtualización no es aplicable. Esto
+se debe a que los ataques objeto de estudio operan sobre la capa de enlace
+del protocolo 802.11, es decir, sobre frames de gestión y control que se
+transmiten exclusivamente a través del medio físico de radiofrecuencia. Las
+máquinas virtuales no poseen interfaces de radio reales, solo interfaces de
+red virtualizadas a nivel de IP, por lo que no pueden emitir ni capturar
+frames 802.11 reales.
+
+En consecuencia, el ambiente controlado para este proyecto se define
+mediante \textbf{aislamiento físico y lógico}, compuesto por los siguientes
+elementos:
+
+\begin{enumerate}
+  \item \textbf{Red WiFi dedicada al laboratorio.} Se utiliza un router WiFi
+    adquirido específicamente para el proyecto, configurado con un SSID
+    identificable como entorno de prueba (\texttt{LAB\_WARDEN\_UTP}) y
+    desconectado de cualquier enlace a internet. Esto garantiza que ningún
+    tráfico externo interfiera con las capturas y que ningún dispositivo
+    ajeno se conecte accidentalmente.
+  \item \textbf{Dispositivos víctima de propiedad del equipo.} Todos los
+    dispositivos que actúan como clientes legítimos de la red atacada son
+    propiedad de los integrantes del proyecto: un celular Redmi Note 7 con
+    MIUI 12.5 y una laptop Dell Latitude E6220 con Ubuntu Server 22.04.5
+    LTS. No se realiza ninguna prueba contra dispositivos de terceros.
+  \item \textbf{Dispositivo atacante bajo control directo.} La ESP32 ejecuta
+    firmware desarrollado por el equipo, cuyos ataques están dirigidos
+    exclusivamente al BSSID del router de laboratorio y a las MAC de las
+    víctimas del equipo. Los frames maliciosos no se dirigen a ninguna otra
+    red presente en el entorno.
+  \item \textbf{Direccionalidad de los ataques.} Las tres fases de la cadena
+    se configuran para afectar únicamente al BSSID específico del router de
+    laboratorio y al rango de direcciones MAC de los dispositivos víctima
+    del equipo. Aunque los frames se emiten por radiofrecuencia y son
+    físicamente audibles por otros receptores cercanos, no generan efectos
+    sobre redes o dispositivos ajenos, pues no están dirigidos a ellos.
+  \item \textbf{Datos ficticios en el portal cautivo.} El portal cautivo
+    falso solo recibe datos ficticios introducidos por miembros del equipo
+    durante demostraciones controladas. Bajo ninguna circunstancia se
+    introducen credenciales reales.
+  \item \textbf{Ubicación de las pruebas.} Las sesiones de laboratorio se
+    realizan en espacios donde la densidad de redes WiFi vecinas sea mínima,
+    como medida de precaución adicional.
+  \item \textbf{Registro de sesiones.} Cada sesión de pruebas se documenta
+    con fecha, hora de inicio y fin, participantes, fase de la cadena
+    ejecutada y resultados obtenidos.
+\end{enumerate}
+
+% ==============================================================================
+\section{Suposiciones y Dependencias}
+% ==============================================================================
+
+\subsection{Suposiciones}
+\begin{itemize}
+  \item El chipset MediaTek MT7610U del adaptador Panda Wireless PAU0B AC600
+    mantiene compatibilidad con modo monitor en la banda 2.4 GHz bajo las
+    distribuciones Linux utilizadas.
+  \item La ESP32 disponible permite, mediante bibliotecas existentes o
+    modificaciones del SDK, la emisión de frames 802.11 de gestión
+    arbitrarios (incluidos frames de deauth y beacons falsos), así como
+    operar simultáneamente como AP para servir el portal cautivo.
+  \item Los dispositivos víctima (Redmi Note 7 y Dell Latitude E6220)
+    reaccionan de forma observable a los ataques: se desconectan ante el
+    deauth y, en el caso del celular, intentan reconexión automática y
+    presentan el portal cautivo al detectar una red abierta.
+  \item El router de laboratorio a adquirir soporta WiFi 2.4 GHz y permite
+    configurar SSID y contraseña de forma manual.
+\end{itemize}
+
+\subsection{Dependencias Externas}
+
+\begin{datatable}{L{3cm} L{1.8cm} L{5.5cm} L{5cm}}{Dependencia & Versión & Propósito & Componente}
+\drow{Python         & 3.10+   & Lenguaje del subsistema defensivo   & Detector}
+\drow{Scapy          & 2.5+    & Captura y análisis de frames 802.11 & Detector}
+\drow{aircrack-ng    & 1.7+    & Activación de modo monitor (airmon-ng) & Detector}
+\drow{Arduino-ESP32  & 2.0+    & Framework de desarrollo del firmware & Atacante}
+\drow{ESP-IDF        & 5.0+    & Alternativa al framework Arduino    & Atacante}
+\drow{Linux Kernel   & 5.15+   & Soporte de drivers MT7610U          & Detector}
+\drow{Git / GitHub   & ---     & Control de versiones y colaboración & Todo el proyecto}
+\drow{LaTeX          & ---     & Compilación de la documentación     & Documentación}
+\end{datatable}
+
+% ==============================================================================
+\section{Consideraciones Futuras}
+% ==============================================================================
+
+Los siguientes elementos están intencionalmente fuera del alcance de la
+versión inicial pero se reconocen como posibles direcciones futuras de
+extensión del proyecto:
+
+\begin{itemize}
+  \item Expansión de la cadena ofensiva con nuevos ataques (KARMA, captura
+    de handshakes WPA, ataques contra WPS, ataques de downgrade de cifrado).
+  \item Sustitución de las reglas heurísticas del detector por modelos de
+    aprendizaje automático entrenados sobre capturas reales.
+  \item Implementación de una interfaz gráfica o dashboard web para
+    visualización en tiempo real tanto del lado ofensivo como del defensivo.
+  \item Soporte para captura y análisis en la banda de 5 GHz.
+  \item Integración del detector con sistemas SIEM mediante formatos
+    estándar (CEF, Syslog).
+  \item Extensión a sensores distribuidos coordinados para cobertura de
+    áreas más amplias.
+  \item Evolución del subsistema defensivo a un WIPS (Wireless Intrusion
+    Prevention System) con capacidad de respuesta automática ante ataques
+    detectados.
+  \item Generación automática de reportes forenses a partir de las alertas
+    acumuladas durante una sesión.
+  \item Variantes adicionales del portal cautivo que reproduzcan estilos
+    visuales de proveedores reales de WiFi público.
+\end{itemize}
+
+\end{document}
