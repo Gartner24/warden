@@ -8,149 +8,307 @@ Academic WiFi security project for UTP. WARDEN is a dual-subsystem lab that repr
 
 ---
 
+## Hardware required
+
+| Component | Role |
+|---|---|
+| ESP32-WROOM-32 (4 MB flash) | Offensive subsystem |
+| Panda Wireless PAU0B (MT7610U, `panda0`) | Monitor-mode capture adapter |
+| Lab WiFi router | Victim AP |
+| Android phone (MIUI / stock) | Victim device |
+
+---
+
 ## Repository layout
 
 ```
 warden/
-|-- README.md
-|-- .gitignore
-|-- deliverables/          # Academic LaTeX deliverables (Vision, SRS, SAD, Threat Model, ...)
-|-- docs/                  # Dev-facing markdown documentation
-|   |-- architecture.md
-|   |-- data-flow.md
-|   |-- lab-setup.md
-|   |-- threat-model.md
-|   |-- use-cases.md
-|   |-- conventions.md
-|   |-- modules/
-|   |-- adr/
-|   `-- api/
-|-- src/                   # Source code (created as subsystems are implemented)
-|   |-- attacker/          # ESP32 firmware (C++ / Arduino-ESP32)
-|   |-- attacker-panel/    # Static HTML/JS panel for the attack operator
+|-- src/
+|   |-- attacker/          # ESP32 firmware (C++ / Arduino-ESP32 3.x)
+|   |-- attacker-panel/    # Browser UI for attack operator (static HTML/JS)
 |   `-- detector/          # Python detector + FastAPI defender panel
-|-- captures/              # Reference PCAPs for offline analysis (gitignored content)
-`-- reports/               # Per-session lab reports (gitignored content)
+|-- scripts/               # Shell helpers
+|-- tests/                 # Automated acceptance and unit tests
+|-- captures/              # Reference PCAPs (gitignored content)
+|-- deliverables/          # LaTeX academic submissions
+`-- docs/                  # Architecture, ADRs, API reference
 ```
 
 ---
 
-## Subsystems
+## 1. ESP32 firmware
 
-| Subsystem | Runtime | Responsibility |
-|---|---|---|
-| [Attacker firmware](docs/modules/attacker-firmware.md) | ESP32 / C++ Arduino-ESP32 | Executes Beacon Flood, Deauth, and Evil Twin phases; enforces the Ethical Validator |
-| [Attacker Panel](docs/modules/attacker-panel.md) | HTML / vanilla JS / Tailwind CDN | Browser UI for the attack operator; talks to the ESP32 REST API over `WARDEN_CONTROL` WiFi |
-| [Detector](docs/modules/detector.md) | Python 3.10+ / Scapy 2.5+ | Captures 802.11 frames, runs three heuristic analyzers, correlates into a chain alert |
-| [Defender Panel](docs/modules/defender-panel.md) | FastAPI 0.110+ / Uvicorn | Serves the real-time detection dashboard; pushes alerts via WebSocket |
+### Compile
+
+```bash
+arduino-cli compile \
+  --fqbn esp32:esp32:esp32 \
+  --build-path /tmp/warden-build \
+  --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=1" \
+  --build-property "compiler.c.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=1" \
+  src/attacker
+```
+
+### Flash
+
+```bash
+arduino-cli upload \
+  --fqbn esp32:esp32:esp32 \
+  --port /dev/ttyUSB0 \
+  --input-dir /tmp/warden-build \
+  src/attacker
+```
+
+### Compile + flash in one shot
+
+```bash
+arduino-cli compile \
+  --fqbn esp32:esp32:esp32 \
+  --build-path /tmp/warden-build \
+  --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=1" \
+  --build-property "compiler.c.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=1" \
+  src/attacker && \
+arduino-cli upload \
+  --fqbn esp32:esp32:esp32 \
+  --port /dev/ttyUSB0 \
+  --input-dir /tmp/warden-build \
+  src/attacker
+```
+
+### Serial monitor (ESP32 logs)
+
+```bash
+python3 -c "
+import serial, sys
+s = serial.Serial('/dev/ttyUSB0', 115200)
+[sys.stdout.write(s.readline().decode(errors='replace')) for _ in iter(int,1)]
+"
+```
+
+After boot the ESP32 broadcasts `WARDEN_CONTROL` (WPA2, password `warden-control-pwd`) at `192.168.4.1`.
 
 ---
 
-## Quickstart
+## 2. Attacker panel
 
-### Attacker firmware (ESP32)
-
-1. Open `src/attacker/` in Arduino IDE 2.x with the Arduino-ESP32 2.0+ board package installed.
-2. Install required libraries from the Arduino Library Manager: `ESPAsyncWebServer`, `AsyncTCP`, `ArduinoJson` (see [`docs/lab-setup.md`](docs/lab-setup.md) for details).
-3. Flash via USB (115200 baud).
-4. After boot the ESP32 exposes `WARDEN_CONTROL` AP (WPA2-PSK `warden-control-pwd`, `192.168.4.1`).
-
-### Attacker Panel
+Connect your laptop to the `WARDEN_CONTROL` WiFi network first.
 
 ```bash
 cd src/attacker-panel
 python3 -m http.server 8080
-# Open http://localhost:8080 in a browser joined to WARDEN_CONTROL
 ```
 
-### Detector + Defender Panel
+Open `http://localhost:8080` in a browser. The panel talks to the ESP32 at `http://192.168.4.1`.
+
+**Workflow:**
+1. **Recon** tab — scan for nearby networks, pick the target, select victim device MAC
+2. **Ethics** tab — confirm the target BSSID is lab-owned to unlock attack controls
+3. **Attack** tab — configure phase durations, choose mode (`cadena_automatica` runs all three phases in sequence), start attack
+4. **Summary** tab — view captured credentials after FASE_3 completes
+
+---
+
+## 3. Panda0 monitor mode
+
+### Set monitor mode on a specific channel
 
 ```bash
-cd src/detector
-pip install -r requirements.txt
+sudo bash scripts/setup-monitor-mode.sh panda0 <channel>
+# Example: channel 1
+sudo bash scripts/setup-monitor-mode.sh panda0 1
+```
 
-# Live capture mode
-python3 detector.py --iface panda0 --channel 6 --bssid <LAB_BSSID> --ssid LAB_WARDEN_UTP
+Or manually:
 
-# Offline PCAP mode
-python3 detector.py --pcap captures/session.pcap --bssid <LAB_BSSID> --ssid LAB_WARDEN_UTP
+```bash
+sudo ip link set panda0 down
+sudo iw dev panda0 set type monitor
+sudo ip link set panda0 up
+sudo iw dev panda0 set channel <channel>
+```
 
-# Defender Panel (web dashboard on http://localhost:8000)
-uvicorn warden.detector.web.server:app --host 127.0.0.1 --port 8000
+### Check current mode and channel
+
+```bash
+iw dev panda0 info
+```
+
+Output shows `type monitor` and `channel X` when in monitor mode.
+
+### Restore to managed (normal) mode
+
+```bash
+sudo ip link set panda0 down
+sudo iw dev panda0 set type managed
+sudo ip link set panda0 up
+```
+
+### Prevent NetworkManager from taking over panda0
+
+```bash
+nmcli dev set panda0 managed no
+```
+
+### sudoers entry (run monitor script without password prompt)
+
+Add to `/etc/sudoers.d/warden`:
+
+```
+<your-user> ALL=(ALL) NOPASSWD: /usr/bin/bash /path/to/warden/scripts/setup-monitor-mode.sh
+<your-user> ALL=(ALL) NOPASSWD: /usr/bin/ip, /usr/bin/iw
 ```
 
 ---
 
-## Develop Without Hardware
+## 4. Defender panel
 
-Full Python detector + Defender Panel work without hardware:
-
-### Setup
+### Install dependencies (once)
 
 ```bash
+cd /path/to/warden
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
-python3 scripts/generate-fixtures.py  # generates test PCAPs
+pip install -e ".[dev]"
 ```
 
-### Run tests
+### Start the defender panel
 
 ```bash
+source .venv/bin/activate
+uvicorn detector.web.server:app --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:8000` in a browser.
+
+**Workflow in the panel:**
+1. Set **Canal a monitorear** to match the victim AP channel (e.g. `1`)
+2. Click **Activar modo monitor** — `panda0` badge should show `monitor ch 1`
+3. Fill in **BSSID protegido** and **SSID protegido** of the victim AP
+4. Click **Iniciar detector**
+5. Watch alerts appear in real time as the attacker runs its chain
+6. Click **Resetear sesion** between runs to clear counters
+
+> **Important:** the panda0 channel must match the victim AP channel and the attacker channel. If they differ, most deauth frames will be invisible to the detector.
+
+---
+
+## 5. Full attack demo (end-to-end)
+
+**Terminal 1 — serial monitor:**
+```bash
+python3 -c "
+import serial, sys
+s = serial.Serial('/dev/ttyUSB0', 115200)
+[sys.stdout.write(s.readline().decode(errors='replace')) for _ in iter(int,1)]
+"
+```
+
+**Terminal 2 — attacker panel:**
+```bash
+cd src/attacker-panel && python3 -m http.server 8080
+```
+
+**Terminal 3 — defender panel:**
+```bash
+source .venv/bin/activate && uvicorn detector.web.server:app --host 0.0.0.0 --port 8000
+```
+
+**Steps:**
+1. Flash firmware to ESP32
+2. Connect laptop to `WARDEN_CONTROL` WiFi
+3. Open attacker panel at `http://localhost:8080`
+4. Open defender panel at `http://localhost:8000`
+5. In defender panel: set channel, activate monitor mode, start detector
+6. In attacker panel: scan, pick target, confirm ethics, start `cadena_automatica`
+7. Watch serial for phase transitions: `FASE_1` -> `FASE_2` -> `FASE_3`
+8. When `FASE_3` starts, connect victim phone to the cloned SSID
+9. The OS captive portal popup appears — victim enters credentials
+10. Credentials appear in attacker panel Summary tab and `GET http://192.168.4.1/credentials`
+11. Defender panel shows BEACON_FLOOD, DEAUTH, EVIL_TWIN, and CADENA_OFENSIVA alerts
+
+---
+
+## 6. Useful one-liners
+
+**Check ESP32 port:**
+```bash
+ls /dev/ttyUSB*
+```
+
+**Fetch attack status from ESP32:**
+```bash
+curl http://192.168.4.1/attack/status
+```
+
+**Fetch captured credentials from ESP32:**
+```bash
+curl http://192.168.4.1/credentials
+```
+
+**Fetch current attacker config:**
+```bash
+curl http://192.168.4.1/config
+```
+
+**Stop attack manually:**
+```bash
+curl -X POST http://192.168.4.1/attack/stop
+```
+
+**Scan networks from ESP32:**
+```bash
+curl http://192.168.4.1/scan
+```
+
+**Start detector via API (offline/pcap mode):**
+```bash
+curl -X POST http://localhost:8000/api/detector/start \
+  -H "content-type: application/json" \
+  -d '{"bssid_protegido":"E4:AB:89:D6:9B:80","ssid_protegido":"RVGREDES 2.4","canal":1,"pcap":"captures/session.pcap"}'
+```
+
+**Run acceptance tests:**
+```bash
+source .venv/bin/activate
 pytest tests/ -v
 ```
 
-### Mock ESP32 (offline Attacker Panel dev)
-
+**Check panda0 is in monitor mode:**
 ```bash
-# Terminal 1: mock ESP32
-cd tools/mock-esp32
-pip install fastapi uvicorn
-uvicorn server:app --port 8081
-
-# Terminal 2: serve Attacker Panel
-cd src/attacker-panel
-python3 -m http.server 8080
-# Edit assets/api-client.js: change API_BASE to 'http://localhost:8081'
-# Open http://localhost:8080
+iw dev panda0 info | grep type
+# should print: type monitor
 ```
 
-### Run Defender Panel
-
+**Kill anything holding the serial port:**
 ```bash
-uvicorn detector.web.server:app --host 127.0.0.1 --port 8000 --reload
-# Open http://127.0.0.1:8000/
-# POST /api/detector/start with pcap path to trigger alerts
-```
-
-### C++ host tests (Ethical Validator + Frame Builder)
-
-```bash
-cmake -S src/ethical_validator -B src/ethical_validator/build
-cmake --build src/ethical_validator/build
-ctest --test-dir src/ethical_validator/build --output-on-failure
+fuser /dev/ttyUSB0
 ```
 
 ---
 
-## Hardware
+## 7. Attack phases reference
 
-| Component | Purpose |
-|---|---|
-| ESP32-WROOM-32 (4 MB flash, 520 KB RAM) | Offensive subsystem MCU |
-| Panda Wireless PAU0B AC600 (MediaTek MT7610U, driver `mt76x0u`) | Monitor-mode USB adapter for the detector |
-| Lab WiFi router (SSID `LAB_WARDEN_UTP`, no internet, channel 6) | Simulated victim AP |
-| Redmi Note 7 (MIUI 12.5) | Primary victim device |
-| Dell Latitude E6220 (Ubuntu Server 22.04.5 LTS) | Secondary victim device |
+| Phase | Duration (default) | What happens |
+|---|---|---|
+| FASE_1: Beacon Flood | 30 s | ESP32 broadcasts ~50 fake SSIDs/s to saturate victim's network list |
+| FASE_2: Deauth | 30 s | ESP32 injects deauth frames spoofed from target AP, disconnecting victim |
+| FASE_3: Evil Twin | 120 s | ESP32 brings up cloned AP; victim connects; captive portal captures credentials |
 
-See [`docs/lab-setup.md`](docs/lab-setup.md) for the full setup procedure.
+Default config values are in `src/attacker/config.cpp`. Phase durations can be changed via `POST http://192.168.4.1/config`.
 
 ---
 
-## Documentation
+## 8. Detection thresholds (defaults)
 
-- **Dev docs:** [`docs/`](docs/README.md) - architecture, modules, ADRs, API reference, conventions.
-- **Academic deliverables:** [`deliverables/`](deliverables/) - formal UTP submission (Vision, SRS, SAD, Threat Model, Use Cases, etc.) built with `pdflatex`.
+| Parameter | Default | Meaning |
+|---|---|---|
+| `umbral_beacons_por_seg` | 30 | Beacons/s above this triggers BEACON_FLOOD alert |
+| `ventana_beacon_seg` | 5 | Window size for beacon rate measurement |
+| `umbral_deauth_por_seg` | 5 | Deauths/s above this triggers DEAUTH alert |
+| `ventana_deauth_seg` | 3 | Window size for deauth rate measurement |
+| `cooldown_alerta_seg` | 5 | Minimum seconds between alerts of the same type |
+
+Thresholds can be changed at runtime via `POST http://localhost:8000/api/config`.
 
 ---
 
