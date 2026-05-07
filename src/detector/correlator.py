@@ -36,7 +36,10 @@ class ChainCorrelator:
                     "timestamp": t2.isoformat(),
                     "severidad": "CRITICAL",
                     "tipo": "CADENA_OFENSIVA",
-                    "mensaje": "Cadena ofensiva completa detectada (Beacon Flood -> Deauth -> Evil Twin)",
+                    "mensaje": (
+                        "Cadena ofensiva completa detectada"
+                        " (Beacon Flood -> Deauth -> Evil Twin)"
+                    ),
                     "detalles": {
                         "t_beacon_flood": t0.isoformat(),
                         "t_deauth": t1.isoformat(),

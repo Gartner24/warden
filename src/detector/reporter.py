@@ -19,7 +19,7 @@ def format_console(alert: dict[str, Any]) -> str:
 
 
 class Reporter:
-    def __init__(self, *, queue: asyncio.Queue | None = None) -> None:
+    def __init__(self, *, queue: asyncio.Queue[dict[str, Any]] | None = None) -> None:
         self._queue: asyncio.Queue[dict[str, Any]] = queue or asyncio.Queue(maxsize=_QUEUE_MAX)
         self._counters: Counter[str] = Counter()
         self._drops = 0
