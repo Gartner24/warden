@@ -81,6 +81,58 @@ uvicorn warden.detector.web.server:app --host 127.0.0.1 --port 8000
 
 ---
 
+## Develop Without Hardware
+
+Full Python detector + Defender Panel work without hardware:
+
+### Setup
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python3 scripts/generate-fixtures.py  # generates test PCAPs
+```
+
+### Run tests
+
+```bash
+pytest tests/ -v
+```
+
+### Mock ESP32 (offline Attacker Panel dev)
+
+```bash
+# Terminal 1: mock ESP32
+cd tools/mock-esp32
+pip install fastapi uvicorn
+uvicorn server:app --port 8081
+
+# Terminal 2: serve Attacker Panel
+cd src/attacker-panel
+python3 -m http.server 8080
+# Edit assets/api-client.js: change API_BASE to 'http://localhost:8081'
+# Open http://localhost:8080
+```
+
+### Run Defender Panel
+
+```bash
+uvicorn detector.web.server:app --host 127.0.0.1 --port 8000 --reload
+# Open http://127.0.0.1:8000/
+# POST /api/detector/start with pcap path to trigger alerts
+```
+
+### C++ host tests (Ethical Validator + Frame Builder)
+
+```bash
+cmake -S src/ethical_validator -B src/ethical_validator/build
+cmake --build src/ethical_validator/build
+ctest --test-dir src/ethical_validator/build --output-on-failure
+```
+
+---
+
 ## Hardware
 
 | Component | Purpose |
