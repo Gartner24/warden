@@ -26,20 +26,27 @@ value that appears here without referencing this document.
 | WARDEN_CONTROL   | `WARDEN_CONTROL`      | WPA2-PSK        | 192.168.4.1  | 192.168.4.10 - 192.168.4.50   | -     | Password: `warden-control-pwd`, ch1 |
 | Evil Twin        | cloned from target    | OPEN (no auth)  | 10.0.0.1     | 10.0.0.10 - 10.0.0.50         | 12h   | DNS wildcard -> 10.0.0.1 TTL 60   |
 | Defender Panel   | -                     | loopback only   | 127.0.0.1    | -                             | -     | Port 8000                          |
-| Attacker Panel   | -                     | dev only        | localhost    | -                             | -     | Port 8080, `python3 -m http.server` |
+| Attacker Panel   | -                     | dev only        | localhost    | -                             | -     | Port 8080, `python3 -m http.server 8080` |
 
 ---
 
 ## Timing Defaults (seconds)
 
-| Constant                 | Value    | Description                                   |
-|--------------------------|----------|-----------------------------------------------|
-| `duracion_beacon_flood`  | 30       | Duration of beacon flood attack (s)           |
-| `duracion_deauth`        | 15       | Duration of deauth attack (s)                 |
-| `duracion_evil_twin`     | 120      | Duration of evil twin session (s)             |
-| `beacons_por_segundo`    | 50       | Beacon frames emitted per second              |
-| `prefijo_ssid_falso`     | `FakeNet`| SSID prefix for fake network identifiers      |
-| `ventana_correlacion`    | 60       | Correlation window for event linking (s)      |
+| Constant                 | Value | Description                                   |
+|--------------------------|-------|-----------------------------------------------|
+| `duracion_beacon_flood`  | 30    | Duration of beacon flood attack (s)           |
+| `duracion_deauth`        | 15    | Duration of deauth attack (s)                 |
+| `duracion_evil_twin`     | 120   | Duration of evil twin session (s)             |
+| `beacons_por_segundo`    | 50    | Beacon frames emitted per second              |
+| `ventana_correlacion`    | 60    | Correlation window for event linking (s)      |
+
+---
+
+## Attack String Parameters
+
+| Constant              | Value      | Description                              |
+|-----------------------|------------|------------------------------------------|
+| `prefijo_ssid_falso`  | `FakeNet`  | SSID prefix for fake beacon identifiers  |
 
 ---
 

@@ -626,8 +626,8 @@ HTTP 200:
 ```json
 {
   "umbrales": {
-    "beacon_flood_bssids_por_seg": 50,
-    "deauth_frames_por_seg": 20,
+    "beacon_flood_bssids_por_seg": 30,
+    "deauth_frames_por_seg": 5,
     "evil_twin_umbral_similitud": 0.85
   },
   "canal": 6,
@@ -653,8 +653,8 @@ Body:
 ```json
 {
   "umbrales": {
-    "beacon_flood_bssids_por_seg": 50,
-    "deauth_frames_por_seg": 20,
+    "beacon_flood_bssids_por_seg": 30,
+    "deauth_frames_por_seg": 5,
     "evil_twin_umbral_similitud": 0.85
   },
   "canal": 6,
@@ -672,8 +672,8 @@ HTTP 200:
   "ok": true,
   "config": {
     "umbrales": {
-      "beacon_flood_bssids_por_seg": 50,
-      "deauth_frames_por_seg": 20,
+      "beacon_flood_bssids_por_seg": 30,
+      "deauth_frames_por_seg": 5,
       "evil_twin_umbral_similitud": 0.85
     },
     "canal": 6,
@@ -704,8 +704,8 @@ Body:
   "bssid_protegido": "e4:ab:89:d6:9b:80",
   "ssid_protegido": "LAB_WARDEN_UTP",
   "umbrales": {
-    "beacon_flood_bssids_por_seg": 50,
-    "deauth_frames_por_seg": 20,
+    "beacon_flood_bssids_por_seg": 30,
+    "deauth_frames_por_seg": 5,
     "evil_twin_umbral_similitud": 0.85
   }
 }
