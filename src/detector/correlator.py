@@ -1,0 +1,50 @@
+"""D-07: correlate three-phase attack alerts into CADENA_OFENSIVA."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Any
+
+from detector.config import DetectorConfig
+
+__all__ = ["ChainCorrelator"]
+
+_SEQUENCE = ("BEACON_FLOOD", "DEAUTH", "EVIL_TWIN")
+
+
+class ChainCorrelator:
+    def __init__(self, config: DetectorConfig) -> None:
+        self._window = timedelta(seconds=config.ventana_correlacion_seg)
+        self._timestamps: dict[str, datetime] = {}
+        self._emitted = False
+        self._pending: list[dict[str, Any]] = []
+
+    def consume(self, alert: dict[str, Any]) -> None:
+        if self._emitted:
+            return
+        tipo = alert.get("tipo", "")
+        if tipo not in _SEQUENCE:
+            return
+        ts = datetime.fromisoformat(alert["timestamp"])
+        self._timestamps[tipo] = ts
+        if all(t in self._timestamps for t in _SEQUENCE):
+            t0 = self._timestamps["BEACON_FLOOD"]
+            t1 = self._timestamps["DEAUTH"]
+            t2 = self._timestamps["EVIL_TWIN"]
+            if t0 < t1 < t2 and (t2 - t0) <= self._window:
+                self._emitted = True
+                self._pending.append({
+                    "timestamp": t2.isoformat(),
+                    "severidad": "CRITICAL",
+                    "tipo": "CADENA_OFENSIVA",
+                    "mensaje": "Cadena ofensiva completa detectada (Beacon Flood -> Deauth -> Evil Twin)",
+                    "detalles": {
+                        "t_beacon_flood": t0.isoformat(),
+                        "t_deauth": t1.isoformat(),
+                        "t_evil_twin": t2.isoformat(),
+                        "duracion_seg": (t2 - t0).total_seconds(),
+                    },
+                })
+
+    def drain(self) -> list[dict[str, Any]]:
+        out, self._pending = self._pending, []
+        return out
