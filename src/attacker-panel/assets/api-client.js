@@ -14,8 +14,12 @@ const api = {
     const r = await fetch(API_BASE + '/scan');
     return r.json();
   },
-  async clients(bssid, duration = 30) {
-    const r = await fetch(`${API_BASE}/clients?bssid=${encodeURIComponent(bssid)}&duration=${duration}`);
+  async clients(bssid) {
+    const r = await fetch(`${API_BASE}/clients?bssid=${encodeURIComponent(bssid)}`);
+    return r.json();
+  },
+  async clientsResult() {
+    const r = await fetch(`${API_BASE}/clients`);
     return r.json();
   },
   async ouiLookup(mac) {

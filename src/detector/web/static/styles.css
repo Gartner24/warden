@@ -1,3 +1,5 @@
+.threat-idle { background-color: #1f2937; border: 1px solid #374151; color: #9ca3af; }
+.threat-idle .threat-dot { background-color: #6b7280; }
 .threat-green { background-color: #14532d; border: 1px solid #16a34a; color: #86efac; }
 .threat-green .threat-dot { background-color: #22c55e; }
 .threat-yellow { background-color: #713f12; border: 1px solid #ca8a04; color: #fde047; }

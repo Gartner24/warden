@@ -91,6 +91,29 @@ class DetectorRunner:
                     for alert in cc.drain():
                         reporter.emit(alert)
                     session.tick()
+            else:
+                from detector.capture.live_capture import LiveCapture
+
+                def _on_packet(pkt: Any) -> None:
+                    _ts[0] = _pkt_ts(pkt)
+                    dispatcher.dispatch(pkt)
+                    for alert in bf.drain():
+                        reporter.emit(alert)
+                        cc.consume(alert)
+                    for alert in da.drain():
+                        reporter.emit(alert)
+                        cc.consume(alert)
+                    for alert in et.drain():
+                        reporter.emit(alert)
+                        cc.consume(alert)
+                    for alert in cc.drain():
+                        reporter.emit(alert)
+                    session.tick()
+
+                cap = LiveCapture(config=config, on_packet=_on_packet)
+                cap.start()
+                self._stop_event.wait()
+                cap.stop()
         except Exception:
             self._state = "error"
         finally:

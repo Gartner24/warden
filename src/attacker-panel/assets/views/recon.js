@@ -18,9 +18,8 @@ async function doScan() {
   try {
     const data = await api.scan();
     document.getElementById('scan-status').textContent =
-      `${data.redes_encontradas || 0} redes encontradas`;
-    const redes = data.redes || [];
-    renderNetworkTable(redes);
+      `${data.redes_encontradas || 0} redes encontradas — haga clic en una fila para seleccionarla`;
+    renderNetworkTable(data.redes || []);
   } catch(e) {
     document.getElementById('scan-status').textContent = 'Error: ' + e.message;
   } finally {
@@ -31,15 +30,23 @@ async function doScan() {
 function renderNetworkTable(redes) {
   const el = document.getElementById('network-table');
   if (!redes.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Sin redes.</p>'; return; }
-  let rows = redes.map((r, i) => `
-    <tr class="hover:bg-gray-700 cursor-pointer" onclick="selectNetwork(${i})">
-      <td class="px-3 py-2">${r.ssid_objetivo || ''}</td>
+  const selected = state.get('selectedNetwork');
+  const rows = redes.map((r, i) => {
+    const isSel = selected && selected.bssid_objetivo === r.bssid_objetivo;
+    return `
+    <tr class="hover:bg-gray-700 cursor-pointer transition-colors ${isSel ? 'bg-blue-900' : ''}"
+        onclick="selectNetwork(${i})" id="net-row-${i}">
+      <td class="px-3 py-2">
+        ${r.ssid_objetivo || ''}
+        ${isSel ? '<span class="ml-2 text-xs bg-blue-600 text-white px-1 rounded">&#10003; Seleccionada</span>' : ''}
+      </td>
       <td class="px-3 py-2 font-mono text-xs">${r.bssid_objetivo || ''}</td>
       <td class="px-3 py-2">${r.canal || ''}</td>
       <td class="px-3 py-2">${r.rssi_dbm || ''}dBm</td>
       <td class="px-3 py-2">${r.cifrado || ''}</td>
       <td class="px-3 py-2 text-xs text-gray-400">${r.fabricante || ''}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   el.innerHTML = `
     <table class="w-full text-sm bg-gray-800 rounded-lg overflow-hidden">
       <thead class="bg-gray-700">
@@ -60,28 +67,59 @@ function renderNetworkTable(redes) {
 async function selectNetwork(idx) {
   const red = window._recon_redes[idx];
   state.set('selectedNetwork', red);
+  state.set('selectedVictim', null);
   document.getElementById('scan-status').textContent =
-    `Seleccionado: ${red.ssid_objetivo} (${red.bssid_objetivo})`;
-  // Probe clients
+    `Seleccionada: ${red.ssid_objetivo} (${red.bssid_objetivo}) — continuar en Etica`;
+  renderNetworkTable(window._recon_redes);
+
+  const clientEl = document.getElementById('client-table');
+  clientEl.innerHTML = '<p class="text-gray-400 text-sm">Iniciando escaneo de clientes (~7 s)...</p>';
+
+  // Kick off async scan — connection may drop briefly while ESP32 switches channel
   try {
-    const data = await api.clients(red.bssid_objetivo);
-    renderClientTable(data.clientes || []);
-  } catch(e) {}
+    await api.clients(red.bssid_objetivo);
+  } catch(e) { /* expected: connection resets while ESP32 sniffs */ }
+
+  // Poll until scanning:false
+  clientEl.innerHTML = '<p class="text-gray-400 text-sm">Escaneando clientes... (la conexion puede recuperarse en unos segundos)</p>';
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const data = await api.clientsResult();
+      if (!data.scanning) {
+        renderClientTable(data.clientes || []);
+        return;
+      }
+    } catch(e) { /* AP may still be recovering */ }
+  }
+  clientEl.innerHTML = '<p class="text-gray-500 text-sm">No se detectaron clientes. Intente de nuevo.</p>';
 }
 
 function renderClientTable(clientes) {
   const el = document.getElementById('client-table');
-  if (!clientes.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Sin clientes detectados.</p>'; return; }
-  let rows = clientes.map(c => `
-    <tr>
-      <td class="px-3 py-2 font-mono text-xs">${c.mac || ''}</td>
-      <td class="px-3 py-2">${c.frames_observados || 0}</td>
-      <td class="px-3 py-2 text-xs" id="oui-${c.mac}">
-        <button onclick="lookupOui('${c.mac}')" class="text-blue-400 hover:text-blue-300">Lookup</button>
+  if (!clientes.length) {
+    el.innerHTML = '<p class="text-gray-500 text-sm mt-2">Sin clientes detectados en este momento.</p>';
+    return;
+  }
+  const selectedVictim = state.get('selectedVictim');
+  const rows = clientes.map(c => {
+    const isSel = selectedVictim && selectedVictim === c.mac;
+    return `
+    <tr class="hover:bg-gray-700 cursor-pointer transition-colors ${isSel ? 'bg-green-900' : ''}"
+        onclick="selectVictim('${c.mac}')">
+      <td class="px-3 py-2 font-mono text-xs">
+        ${c.mac || ''}
+        ${isSel ? '<span class="ml-2 text-xs bg-green-600 text-white px-1 rounded">&#10003; Victima</span>' : ''}
       </td>
-    </tr>`).join('');
+      <td class="px-3 py-2">${c.frames_observados || 0}</td>
+      <td class="px-3 py-2 text-xs text-gray-400" id="oui-${c.mac}">...</td>
+    </tr>`;
+  }).join('');
   el.innerHTML = `
-    <h3 class="font-semibold mb-2">Clientes</h3>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-semibold">Clientes asociados</h3>
+      <span class="text-xs text-gray-400">Haga clic en un cliente para seleccionarlo como victima del deauth</span>
+    </div>
     <table class="w-full text-sm bg-gray-800 rounded-lg overflow-hidden">
       <thead class="bg-gray-700">
         <tr>
@@ -92,6 +130,15 @@ function renderClientTable(clientes) {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+  window._recon_clientes = clientes;
+  clientes.forEach(c => lookupOui(c.mac));
+}
+
+function selectVictim(mac) {
+  state.set('selectedVictim', mac);
+  renderClientTable(window._recon_clientes);
+  document.getElementById('scan-status').textContent =
+    'Victima: ' + mac + ' — continue en Etica';
 }
 
 async function lookupOui(mac) {

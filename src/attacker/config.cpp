@@ -56,6 +56,15 @@ bool config_set_ssid(const char* ssid) {
     return true;
 }
 
+bool config_set_victima(const char* mac_str) {
+    uint8_t tmp[6];
+    if (!parse_bssid(mac_str, tmp)) return false;
+    memcpy(g_config.mac_victima_bytes, tmp, 6);
+    strncpy(g_config.mac_victima, mac_str, sizeof(g_config.mac_victima) - 1);
+    g_config.mac_victima_set = true;
+    return true;
+}
+
 void config_set_channel(uint8_t ch) {
     if (ch >= 1 && ch <= 13) g_config.canal = ch;
 }

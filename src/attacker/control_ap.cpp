@@ -10,6 +10,11 @@ void control_ap_start() {
     IPAddress subnet(255, 255, 255, 0);
     WiFi.softAPConfig(local_ip, gateway, subnet);
     WiFi.softAP(WARDEN_CONTROL_SSID, WARDEN_CONTROL_PASSWORD, WARDEN_CONTROL_CHANNEL);
+    // Wait for the TCP/IP stack to assign the SoftAP IP before returning.
+    uint32_t t = millis();
+    while (WiFi.softAPIP() == IPAddress(0, 0, 0, 0) && (millis() - t) < 3000) {
+        delay(50);
+    }
     _ap_running = true;
     Serial.printf("[INFO] [%lu] Control AP started: SSID=%s ch=%d IP=%s\n",
                   millis(), WARDEN_CONTROL_SSID, WARDEN_CONTROL_CHANNEL, WARDEN_CONTROL_IP);

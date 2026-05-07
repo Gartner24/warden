@@ -54,11 +54,6 @@ void cred_push(const char* user, const char* pass, const char* ip) {
 }
 
 void api_server_init() {
-    server.on("/.*", HTTP_OPTIONS, [](AsyncWebServerRequest* req) {
-        auto* resp = req->beginResponse(204);
-        add_cors(resp);
-        req->send(resp);
-    });
 
     // GET /status
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -95,18 +90,21 @@ void api_server_init() {
         send_json(req, 200, body);
     });
 
-    // GET /clients
+    // GET /clients — start async scan or return cached results
     server.on("/clients", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (!req->hasParam("bssid")) {
-            send_json(req, 400, "{\"ok\":false,\"error\":\"missing bssid\",\"codigo\":\"INVALID_BSSID\"}");
+        if (req->hasParam("bssid")) {
+            String bssid_str = req->getParam("bssid")->value();
+            uint8_t bssid[6] = {0};
+            sscanf(bssid_str.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                   &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+            recon_clients_start(bssid, g_config.canal);
+            send_json(req, 200,
+                "{\"ok\":true,\"scanning\":true,\"clientes_detectados\":0,\"clientes\":[]}");
             return;
         }
-        String bssid_str = req->getParam("bssid")->value();
-        uint8_t bssid[6] = {0};
-        sscanf(bssid_str.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-               &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+        // Poll for results
         JsonDocument doc;
-        recon_clients(bssid, 30000, doc);
+        recon_clients_fill(doc);
         String body; serializeJson(doc, body);
         send_json(req, 200, body);
     });
@@ -138,6 +136,7 @@ void api_server_init() {
     server.on("/config", HTTP_GET, [](AsyncWebServerRequest* req) {
         JsonDocument doc;
         doc["bssid_objetivo"] = g_config.bssid_objetivo;
+        doc["mac_victima"] = g_config.mac_victima_set ? g_config.mac_victima : "";
         doc["ssid_clonar"] = g_config.ssid_clonar;
         doc["canal"] = g_config.canal;
         JsonObject dur = doc["duraciones_seg"].to<JsonObject>();
@@ -168,6 +167,12 @@ void api_server_init() {
             }
             if (doc["ssid_clonar"].is<const char*>()) {
                 config_set_ssid(doc["ssid_clonar"]);
+            }
+            if (doc["mac_victima"].is<const char*>()) {
+                config_set_victima(doc["mac_victima"]);
+            }
+            if (doc["canal"].is<int>()) {
+                config_set_channel((uint8_t)doc["canal"].as<int>());
             }
             send_json(req, 200, "{\"ok\":true}");
         }
@@ -241,12 +246,30 @@ void api_server_init() {
     server.addHandler(&events);
 
     server.onNotFound([](AsyncWebServerRequest* req) {
+        if (req->method() == HTTP_OPTIONS) {
+            auto* resp = req->beginResponse(204);
+            add_cors(resp);
+            req->send(resp);
+            return;
+        }
         req->send(404, "application/json",
             "{\"ok\":false,\"error\":\"not found\",\"codigo\":\"NOT_FOUND\"}");
     });
 }
 
+void api_server_pause() {
+    server.end();
+}
+
+void api_server_resume() {
+    server.begin();
+}
+
 void api_server_start() {
     api_server_init();
     server.begin();
+}
+
+AsyncWebServer& api_server_get() {
+    return server;
 }

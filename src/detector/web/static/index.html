@@ -13,16 +13,16 @@
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-bold text-white">WARDEN Defender Panel</h1>
       <div id="detector-status" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-300">
-        Detenido
+        Inactivo
       </div>
     </div>
 
     <!-- Threat Indicator -->
-    <div id="threat-state" class="threat-green rounded-xl p-6 mb-6 flex items-center gap-4">
+    <div id="threat-state" class="threat-idle rounded-xl p-6 mb-6 flex items-center gap-4">
       <div class="w-5 h-5 rounded-full threat-dot"></div>
       <div>
-        <div id="threat-label" class="text-lg font-bold">Sin amenazas detectadas</div>
-        <div id="threat-sublabel" class="text-sm opacity-75">Monitor activo</div>
+        <div id="threat-label" class="text-lg font-bold">Detector no iniciado</div>
+        <div id="threat-sublabel" class="text-sm opacity-75">Configure y pulse Iniciar</div>
       </div>
     </div>
 
@@ -46,20 +46,63 @@
       </div>
     </div>
 
-    <!-- Controls -->
-    <div class="flex gap-3 mb-6">
-      <button id="btn-start" onclick="startDetector()"
-        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors">
-        Iniciar
-      </button>
-      <button id="btn-stop" onclick="stopDetector()"
-        class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
-        Detener
-      </button>
-      <button id="btn-reset" onclick="resetSession()"
-        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
-        Resetear Sesion
-      </button>
+    <!-- Detector Config + Controls -->
+    <div class="bg-gray-800 rounded-xl p-4 mb-6">
+      <h2 class="font-semibold text-gray-200 mb-3">Configuracion del detector</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">BSSID protegido (red a vigilar)</label>
+          <input id="input-bssid" type="text" placeholder="E4:AB:89:D6:9B:80"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-white" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">SSID protegido</label>
+          <input id="input-ssid" type="text" placeholder="RVGREDES 2.4"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white" />
+        </div>
+      </div>
+      <div id="detector-error" class="hidden mb-3 text-sm text-red-400"></div>
+      <div id="detector-success" class="hidden mb-3 text-sm text-green-400"></div>
+      <div class="flex gap-3 flex-wrap">
+        <button id="btn-start" onclick="startDetector()"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors">
+          Iniciar detector
+        </button>
+        <button id="btn-stop" onclick="stopDetector()"
+          class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
+          Detener
+        </button>
+        <button id="btn-reset" onclick="resetSession()"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
+          Resetear sesion
+        </button>
+      </div>
+    </div>
+
+    <!-- Interface Status -->
+    <div class="bg-gray-800 rounded-xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-gray-200">Interfaz de captura (panda0)</h2>
+        <span id="iface-mode-badge" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-300">
+          Verificando...
+        </span>
+      </div>
+      <div class="mb-3">
+        <label class="block text-xs text-gray-400 mb-1">Canal a monitorear (debe coincidir con el canal del router)</label>
+        <input id="input-channel" type="number" min="1" max="13" value="6"
+          class="w-24 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white" />
+      </div>
+      <div id="iface-error" class="hidden mb-3 text-sm text-red-400"></div>
+      <div class="flex gap-3 flex-wrap">
+        <button onclick="setMonitorMode()"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors">
+          Activar modo monitor
+        </button>
+        <button onclick="setManagedMode()"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
+          Volver a modo normal
+        </button>
+      </div>
     </div>
 
     <!-- Alert List -->

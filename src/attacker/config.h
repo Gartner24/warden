@@ -26,6 +26,9 @@ struct WardenConfig {
     uint8_t  beacons_por_segundo;
     bool     bssid_validado;
     bool     confirm_provided;
+    char     mac_victima[18];
+    uint8_t  mac_victima_bytes[6];
+    bool     mac_victima_set;
 };
 
 extern WardenConfig g_config;
@@ -34,3 +37,4 @@ void config_init();
 bool config_set_bssid(const char* bssid_str, bool confirm);
 bool config_set_ssid(const char* ssid);
 void config_set_channel(uint8_t ch);
+bool config_set_victima(const char* mac_str);
