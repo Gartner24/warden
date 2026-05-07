@@ -32,6 +32,11 @@ TEST_CASE("ISP OUI rejected") {
     CHECK(validate_bssid(b, true, make_cfg()) == ValidationResult::REJECTED_OUI_BLACKLIST);
 }
 
+TEST_CASE("second OUI in blacklist is rejected") {
+    uint8_t b[6] = {0xC4,0x6E,0x1F,0x11,0x22,0x33};
+    CHECK(validate_bssid(b, true, make_cfg()) == ValidationResult::REJECTED_OUI_BLACKLIST);
+}
+
 TEST_CASE("lab router auto-valid") {
     CHECK(validate_bssid(LAB_BSSID, false, make_cfg()) == ValidationResult::VALID);
 }

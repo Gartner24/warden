@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(warden_ethical_validator CXX)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(ethical_validator STATIC src/ethical_validator.cpp)
 target_include_directories(ethical_validator PUBLIC include)
 enable_testing()

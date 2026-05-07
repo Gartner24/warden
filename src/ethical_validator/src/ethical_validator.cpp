@@ -12,6 +12,7 @@ static bool is_null(const uint8_t b[6]) {
     return true;
 }
 static bool oui_in_blacklist(const uint8_t b[6], const uint8_t (*list)[3], size_t n) {
+    if (!list) return false;
     for (size_t i = 0; i < n; i++) {
         if (memcmp(b, list[i], 3) == 0) return true;
     }
@@ -21,6 +22,7 @@ static bool oui_in_blacklist(const uint8_t b[6], const uint8_t (*list)[3], size_
 ValidationResult validate_bssid(const uint8_t bssid[6], bool confirm_provided, const ValidatorConfig& cfg) {
     if (is_broadcast(bssid)) return ValidationResult::REJECTED_BROADCAST;
     if (is_null(bssid)) return ValidationResult::REJECTED_NULL;
+    // Lab router is unconditionally trusted; checked before OUI blacklist intentionally.
     if (cfg.lab_router_bssid && memcmp(bssid, *cfg.lab_router_bssid, 6) == 0) return ValidationResult::VALID;
     if (oui_in_blacklist(bssid, cfg.isp_oui_blacklist, cfg.isp_oui_blacklist_count))
         return ValidationResult::REJECTED_OUI_BLACKLIST;
