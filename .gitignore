@@ -51,7 +51,8 @@ captures/
 # ---------------------------------------------------------------
 # Reports (per-session markdown)
 # ---------------------------------------------------------------
-reports/session-*.md
+reports/
+!reports/template.md
 
 # ---------------------------------------------------------------
 # Python (FastAPI + Scapy detector)
