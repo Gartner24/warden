@@ -1,0 +1,11 @@
+.threat-green { background-color: #14532d; border: 1px solid #16a34a; color: #86efac; }
+.threat-green .threat-dot { background-color: #22c55e; }
+.threat-yellow { background-color: #713f12; border: 1px solid #ca8a04; color: #fde047; }
+.threat-yellow .threat-dot { background-color: #eab308; animation: pulse 1s infinite; }
+.threat-red { background-color: #7f1d1d; border: 1px solid #dc2626; color: #fca5a5; }
+.threat-red .threat-dot { background-color: #ef4444; animation: pulse 0.5s infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+#alerts { font-family: monospace; }

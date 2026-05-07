@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WARDEN Defender Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4">
+  <div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-white">WARDEN Defender Panel</h1>
+      <div id="detector-status" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-300">
+        Detenido
+      </div>
+    </div>
+
+    <!-- Threat Indicator -->
+    <div id="threat-state" class="threat-green rounded-xl p-6 mb-6 flex items-center gap-4">
+      <div class="w-5 h-5 rounded-full threat-dot"></div>
+      <div>
+        <div id="threat-label" class="text-lg font-bold">Sin amenazas detectadas</div>
+        <div id="threat-sublabel" class="text-sm opacity-75">Monitor activo</div>
+      </div>
+    </div>
+
+    <!-- Counters -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-800 rounded-lg p-4 text-center">
+        <div id="count-BEACON_FLOOD" class="text-3xl font-bold text-yellow-400">0</div>
+        <div class="text-xs text-gray-400 mt-1">Beacon Flood</div>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4 text-center">
+        <div id="count-DEAUTH" class="text-3xl font-bold text-orange-400">0</div>
+        <div class="text-xs text-gray-400 mt-1">Deauth</div>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4 text-center">
+        <div id="count-EVIL_TWIN" class="text-3xl font-bold text-red-400">0</div>
+        <div class="text-xs text-gray-400 mt-1">Evil Twin</div>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4 text-center">
+        <div id="count-CADENA_OFENSIVA" class="text-3xl font-bold text-purple-400">0</div>
+        <div class="text-xs text-gray-400 mt-1">Cadena Ofensiva</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex gap-3 mb-6">
+      <button id="btn-start" onclick="startDetector()"
+        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors">
+        Iniciar
+      </button>
+      <button id="btn-stop" onclick="stopDetector()"
+        class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
+        Detener
+      </button>
+      <button id="btn-reset" onclick="resetSession()"
+        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
+        Resetear Sesion
+      </button>
+    </div>
+
+    <!-- Alert List -->
+    <div class="bg-gray-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold text-gray-200">Alertas</h2>
+        <span id="alert-total" class="text-xs text-gray-500">0 total</span>
+      </div>
+      <ul id="alerts" class="space-y-2 max-h-96 overflow-y-auto"></ul>
+      <p id="no-alerts" class="text-gray-500 text-sm text-center py-4">Sin alertas registradas</p>
+    </div>
+  </div>
+  <script src="/panel.js"></script>
+</body>
+</html>
