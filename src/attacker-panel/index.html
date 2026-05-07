@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WARDEN Attacker Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <!-- Nav -->
+  <nav class="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center gap-6">
+    <span class="font-bold text-red-400 text-lg">WARDEN</span>
+    <button onclick="showView('recon')" class="nav-btn" id="nav-recon">Reconocimiento</button>
+    <button onclick="showView('ethics')" class="nav-btn" id="nav-ethics">Etica</button>
+    <button onclick="showView('attack')" class="nav-btn" id="nav-attack">Ataque</button>
+    <button onclick="showView('summary')" class="nav-btn" id="nav-summary">Resumen</button>
+    <div class="ml-auto">
+      <span id="conn-status" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-400">Desconectado</span>
+    </div>
+  </nav>
+
+  <!-- Views -->
+  <div class="p-6">
+    <div id="view-recon" class="view"></div>
+    <div id="view-ethics" class="view hidden"></div>
+    <div id="view-attack" class="view hidden"></div>
+    <div id="view-summary" class="view hidden"></div>
+  </div>
+
+  <script src="assets/api-client.js"></script>
+  <script src="assets/state.js"></script>
+  <script src="assets/views/recon.js"></script>
+  <script src="assets/views/ethics.js"></script>
+  <script src="assets/views/attack.js"></script>
+  <script src="assets/views/summary.js"></script>
+  <script src="assets/panel.js"></script>
+</body>
+</html>
