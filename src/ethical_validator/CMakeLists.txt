@@ -10,3 +10,7 @@ add_executable(test_validator tests/test_validator.cpp)
 target_link_libraries(test_validator ethical_validator)
 target_include_directories(test_validator PRIVATE third_party)
 add_test(NAME validator COMMAND test_validator)
+
+add_executable(test_frame_builder tests/test_frame_builder.cpp)
+target_include_directories(test_frame_builder PRIVATE third_party)
+add_test(NAME frame_builder COMMAND test_frame_builder)
