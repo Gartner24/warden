@@ -1,0 +1,12 @@
+{
+  "ataque_activo": false,
+  "fase_actual": "IDLE",
+  "tiempo_transcurrido_seg": 0,
+  "tiempo_restante_fase_seg": 0,
+  "contadores": {
+    "beacons_emitidos": 0,
+    "deauths_emitidos": 0,
+    "clientes_evil_twin": 0,
+    "credenciales_capturadas": 0
+  }
+}
