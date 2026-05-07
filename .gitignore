@@ -41,6 +41,8 @@ deliverables/**
 *.cap
 *.pcap
 *.pcapng
+# Test fixtures are deterministic synthetic PCAPs - must be tracked
+!tests/fixtures/pcap/*.pcap
 *.kismet.csv
 *.kismet.netxml
 *.log.csv
