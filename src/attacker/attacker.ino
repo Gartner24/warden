@@ -2,10 +2,12 @@
 #include "serial_interface.h"
 #include "control_ap.h"
 #include "api_server.h"
+#include "chain_controller.h"
 
 void setup() {
     Serial.begin(115200);
     config_init();
+    chain_controller_init();
     serial_interface_init();
     control_ap_start();
     api_server_start();
