@@ -542,6 +542,15 @@ Base URL: `http://127.0.0.1:8000` (local only by default)
 
 All bodies are JSON.
 
+### Detector error codes
+
+| Code | Trigger |
+|---|---|
+| `DETECTOR_ALREADY_RUNNING` | POST /api/detector/start while detector is running |
+| `DETECTOR_NOT_RUNNING` | POST /api/detector/stop while detector is stopped |
+| `INVALID_BSSID` | Malformed BSSID in start body |
+| `INVALID_CHANNEL` | Channel out of range 1-13 |
+
 ---
 
 ## GET /api/status
@@ -559,7 +568,7 @@ HTTP 200:
 ```json
 {
   "detector_corriendo": false,
-  "uptime_seg": 0,
+  "duracion_seg": 0,
   "frames_procesados": 0,
   "alertas_totales": 0,
   "alertas_por_tipo": {
@@ -721,7 +730,7 @@ HTTP 409 — Detector already running:
 {
   "ok": false,
   "error": "El detector ya esta en ejecucion.",
-  "codigo": "ATTACK_ALREADY_RUNNING"
+  "codigo": "DETECTOR_ALREADY_RUNNING"
 }
 ```
 
@@ -882,6 +891,9 @@ The following inconsistencies were found across source documents and resolved he
 | Error response wrapper | `{"error": "...", "codigo": "..."}` (no `ok` field) | `{"ok": false, "error": "...", "codigo": "..."}` |
 | Detector WS `init` shape | `{"tipo": "init", "alertas_recientes": [], "estado": "conectado"}` | `{"tipo": "init", "alertas_recientes": [], "frames_procesados": 0, "detector_corriendo": false}` |
 | Detector WS `alerta` shape | Nested under `datos` key | Flat (all fields at top level alongside `tipo`) |
+| Detector `POST /api/detector/start` field `channel` | `channel` (English, from detector-fastapi.md) | `canal` (Spanish, consistent with project JSON field naming convention) |
+| `GET /api/status` field `duracion_seg` | `uptime_seg` (introduced during drafting; no source basis) | `duracion_seg` (matches design.tex routes.py) |
+| `GET /api/status` field `alertas_por_tipo` | absent from design.tex | Added intentionally: Reporter tracks per-type counters; this field exposes them. Not in any source doc — this is a canonical addition. |
 
 ---
 
