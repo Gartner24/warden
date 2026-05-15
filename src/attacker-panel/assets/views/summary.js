@@ -21,7 +21,7 @@ function renderSummary() {
 
 async function loadSummary() {
   try {
-    const [statusData, credData] = await Promise.all([api.attackStatus(), api.credentials()]);
+    const [statusData, credData] = await Promise.all([api.status(), api.credentials()]);
     const cnt = statusData.contadores || {};
     const creds = credData.credenciales || [];
     const startMs = state.get('startTimeMs') ?? Number(localStorage.getItem('warden.startTimeMs') ?? 0) || null;

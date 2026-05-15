@@ -171,14 +171,14 @@ function connectWS() {
 }
 
 async function startDetector() {
-  // If dropdown has a selection, use it to fill manual inputs
   const sel = document.getElementById('input-network');
+  let canal = 6;
   if (sel && sel.value) {
     const selectedOpt = sel.options[sel.selectedIndex];
     document.getElementById('input-bssid').value = sel.value;
     document.getElementById('input-ssid').value = selectedOpt.dataset.ssid || '';
     if (selectedOpt.dataset.channel) {
-      document.getElementById('input-channel').value = selectedOpt.dataset.channel;
+      canal = parseInt(selectedOpt.dataset.channel) || 6;
     }
   }
   const bssid = document.getElementById('input-bssid').value.trim();
@@ -199,7 +199,6 @@ async function startDetector() {
     return;
   }
 
-  const canal = parseInt(document.getElementById('input-channel').value) || 6;
   const r = await fetch(BASE + '/api/detector/start', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -266,11 +265,10 @@ async function refreshIfaceStatus() {
 async function setMonitorMode() {
   const errEl = document.getElementById('iface-error');
   errEl.classList.add('hidden');
-  const channel = parseInt(document.getElementById('input-channel').value) || 6;
   const r = await fetch(BASE + '/api/interface/monitor', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ canal: channel }),
+    body: '{}',
   });
   const data = await r.json();
   if (!data.ok) {

@@ -120,7 +120,7 @@ async function pollAttackStatus() {
     if (fase === 'FINALIZADO') {
       clearInterval(_attackPollInterval);
       _attackPollInterval = null;
-      setTimeout(() => showView('summary'), 1500);
+      showView('summary');
     }
   } catch(e) {}
 }
