@@ -38,6 +38,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.runner = runner
     app.state.manager = manager
     app.state.queue = queue
+    app.state.seen_networks = None
+    app.state.scanner = None
     drain_task = asyncio.create_task(_drain_queue(queue, manager))
     try:
         yield

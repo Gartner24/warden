@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 
 from detector.config import ConfigError, DetectorConfig
 from detector.web.detector_runner import RunnerStateError
+from detector.web.scan_capture import ScanCapture
+from detector.web.seen_networks import SeenNetworks
 
 _SCRIPTS_DIR = Path(__file__).parents[3] / "scripts"
 _MONITOR_SCRIPT = _SCRIPTS_DIR / "setup-monitor-mode.sh"
@@ -37,6 +39,14 @@ def _runner(request: Request) -> Any:
 
 def _manager(request: Request) -> Any:
     return request.app.state.manager
+
+
+def _stop_scanner(request: Request) -> None:
+    scanner = getattr(request.app.state, "scanner", None)
+    if scanner is not None:
+        scanner.stop()
+    request.app.state.scanner = None
+    request.app.state.seen_networks = None
 
 
 @router.get("/api/status")
@@ -90,6 +100,7 @@ async def detector_start(request: Request) -> JSONResponse:
     pcap = body.get("pcap")
     canal = body.get("canal", 6)
     try:
+        _stop_scanner(request)
         cfg = DetectorConfig(
             iface=iface,
             pcap_file=pcap,
@@ -163,13 +174,20 @@ async def interface_monitor(request: Request) -> JSONResponse:
         if proc.returncode != 0:
             err = (stdout + stderr).decode(errors="replace")
             return JSONResponse({"ok": False, "error": err}, status_code=500)
+        _stop_scanner(request)
+        iface = "panda0"
+        seen = SeenNetworks()
+        scanner = ScanCapture(iface=iface, on_packet=seen.observe)
+        scanner.start()
+        request.app.state.seen_networks = seen
+        request.app.state.scanner = scanner
         return JSONResponse({"ok": True, "mode": "monitor"})
     except asyncio.TimeoutError:
         return JSONResponse({"ok": False, "error": "Script timeout — check /etc/sudoers.d/warden"}, status_code=500)
 
 
 @router.post("/api/interface/managed")
-async def interface_managed() -> JSONResponse:
+async def interface_managed(request: Request) -> JSONResponse:
     try:
         proc = await asyncio.create_subprocess_exec(
             "sudo", "-n", "bash", "-c",
@@ -181,6 +199,15 @@ async def interface_managed() -> JSONResponse:
         if proc.returncode != 0:
             err = (stdout + stderr).decode(errors="replace")
             return JSONResponse({"ok": False, "error": err}, status_code=500)
+        _stop_scanner(request)
         return JSONResponse({"ok": True, "mode": "managed"})
     except asyncio.TimeoutError:
         return JSONResponse({"ok": False, "error": "Script timeout — check /etc/sudoers.d/warden"}, status_code=500)
+
+
+@router.get("/api/networks")
+async def get_networks(request: Request) -> dict[str, Any]:
+    seen: SeenNetworks | None = getattr(request.app.state, "seen_networks", None)
+    if seen is None:
+        return {"networks": []}
+    return {"networks": seen.snapshot()}
