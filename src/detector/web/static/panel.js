@@ -57,15 +57,8 @@ async function refreshScannerStatus() {
       el.textContent = 'Escaner detenido';
       return;
     }
-    let line = `Escaner: corriendo en ${sc.iface}`;
-    if (sc.current_channel) line += `, canal ${sc.current_channel}`;
-    line += `, ${sc.packets_seen} paquetes, ${data.networks_count} redes`;
-    if (sc.hop_error) {
-      line += ` <span class="text-yellow-400">(sin permisos para cambiar canal)</span>`;
-      el.innerHTML = line;
-    } else {
-      el.textContent = line;
-    }
+    const line = `Escaner: corriendo en ${sc.iface}, ${sc.packets_seen} paquetes, ${data.networks_count} redes`;
+    el.textContent = line;
   } catch (e) {
     // ignore fetch errors — non-critical status
   }
