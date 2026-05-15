@@ -197,7 +197,7 @@ function renderClientTable(clientes, scanning = true, elapsed = 0, timeout = 15)
       <tbody>${rows}</tbody>
     </table>`;
   window._recon_clientes = clientes;
-  clientes.forEach(c => lookupOui(c.mac));
+  clientes.forEach((c, i) => setTimeout(() => lookupOui(c.mac), i * 1100));
 }
 
 async function rescanClients() {
