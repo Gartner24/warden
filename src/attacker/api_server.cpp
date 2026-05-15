@@ -53,6 +53,12 @@ void cred_push(const char* user, const char* pass, const char* ip) {
     if (cred_count < 16) cred_count++;
 }
 
+void cred_reset() {
+    cred_count = 0;
+    cred_head = 0;
+    memset(cred_buf, 0, sizeof(cred_buf));
+}
+
 void api_server_init() {
 
     // GET /status

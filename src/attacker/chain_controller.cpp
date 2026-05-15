@@ -86,6 +86,11 @@ void chain_controller_init() {
 
 void chain_controller_start(const char* modo) {
     if (g_chain_state.ataque_activo) return;
+    g_chain_state.beacons_emitidos = 0;
+    g_chain_state.deauths_emitidos = 0;
+    g_chain_state.clientes_evil_twin = 0;
+    g_chain_state.credenciales_capturadas = 0;
+    cred_reset();
     strncpy(_modo, modo, sizeof(_modo) - 1);
     g_chain_state.ataque_activo = true;
     xTaskCreatePinnedToCore(chain_task, "chain_ctrl", 4096, nullptr,
