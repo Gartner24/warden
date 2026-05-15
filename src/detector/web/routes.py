@@ -49,6 +49,15 @@ def _stop_scanner(request: Request) -> None:
     request.app.state.seen_networks = None
 
 
+def _start_scanner(request: Request, iface: str = "panda0") -> None:
+    _stop_scanner(request)
+    seen = SeenNetworks()
+    scanner = ScanCapture(iface=iface, on_packet=seen.observe)
+    scanner.start()
+    request.app.state.seen_networks = seen
+    request.app.state.scanner = scanner
+
+
 @router.get("/api/status")
 async def get_status(request: Request) -> dict[str, Any]:
     runner = _runner(request)
@@ -157,6 +166,40 @@ async def interface_status() -> dict[str, Any]:
         return {"ok": False, "iface": "panda0", "mode": "unknown", "channel": None, "error": "timeout"}
 
 
+def _iface_mode(iface: str = "panda0") -> str:
+    """Return current mode string for iface ('monitor', 'managed', 'unknown')."""
+    try:
+        result = subprocess.run(
+            ["iw", "dev", iface, "info"],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in result.stdout.splitlines():
+            s = line.strip()
+            if s.startswith("type "):
+                return s.split(None, 1)[1]
+    except Exception:
+        pass
+    return "unknown"
+
+
+@router.post("/api/scanner/start")
+async def scanner_start(request: Request) -> JSONResponse:
+    """Start passive network scanner on panda0 if it is in monitor mode.
+
+    Lets users who set monitor mode externally (without the web UI button) get
+    the BSSID dropdown working without needing sudo access for the mode-switch
+    script.
+    """
+    mode = _iface_mode()
+    if mode != "monitor":
+        return JSONResponse(
+            {"ok": False, "error": f"Interface is in '{mode}' mode, not monitor. Switch to monitor first."},
+            status_code=400,
+        )
+    _start_scanner(request)
+    return JSONResponse({"ok": True, "mode": "monitor", "scanner": "started"})
+
+
 @router.post("/api/interface/monitor")
 async def interface_monitor(request: Request) -> JSONResponse:
     try:
@@ -164,6 +207,8 @@ async def interface_monitor(request: Request) -> JSONResponse:
     except Exception:
         body = {}
     canal = str(body.get("canal", 6))
+    script_ok = False
+    script_error = ""
     try:
         proc = await asyncio.create_subprocess_exec(
             "sudo", "-n", "bash", str(_MONITOR_SCRIPT), "panda0", canal,
@@ -171,19 +216,27 @@ async def interface_monitor(request: Request) -> JSONResponse:
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
-        if proc.returncode != 0:
-            err = (stdout + stderr).decode(errors="replace")
-            return JSONResponse({"ok": False, "error": err}, status_code=500)
-        _stop_scanner(request)
-        iface = "panda0"
-        seen = SeenNetworks()
-        scanner = ScanCapture(iface=iface, on_packet=seen.observe)
-        scanner.start()
-        request.app.state.seen_networks = seen
-        request.app.state.scanner = scanner
-        return JSONResponse({"ok": True, "mode": "monitor"})
+        if proc.returncode == 0:
+            script_ok = True
+        else:
+            script_error = (stdout + stderr).decode(errors="replace").strip()
     except asyncio.TimeoutError:
-        return JSONResponse({"ok": False, "error": "Script timeout — check /etc/sudoers.d/warden"}, status_code=500)
+        script_error = "Script timeout — check /etc/sudoers.d/warden"
+
+    # If the script failed, check whether the interface is already in monitor mode
+    # (user may have set it up externally).  If so, still start the scanner.
+    if not script_ok:
+        if _iface_mode() == "monitor":
+            _start_scanner(request)
+            return JSONResponse({
+                "ok": True,
+                "mode": "monitor",
+                "note": f"Monitor mode already active (script skipped: {script_error})",
+            })
+        return JSONResponse({"ok": False, "error": script_error}, status_code=500)
+
+    _start_scanner(request)
+    return JSONResponse({"ok": True, "mode": "monitor"})
 
 
 @router.post("/api/interface/managed")

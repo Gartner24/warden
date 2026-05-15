@@ -205,6 +205,10 @@ async function refreshIfaceStatus() {
     if (mode === 'monitor') {
       badge.textContent = 'monitor' + ch;
       badge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-blue-700 text-white';
+      if (!_networkPollInterval) {
+        await fetch(BASE + '/api/scanner/start', { method: 'POST' });
+        startNetworkPolling();
+      }
     } else if (mode === 'managed') {
       badge.textContent = 'normal (managed)';
       badge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-300';

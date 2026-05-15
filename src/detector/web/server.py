@@ -11,12 +11,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from detector.web.detector_runner import DetectorRunner
-from detector.web.routes import router
+from detector.web.routes import router, _iface_mode
+from detector.web.scan_capture import ScanCapture
+from detector.web.seen_networks import SeenNetworks
 from detector.web.websocket_manager import WebSocketManager
 
 __all__ = ["create_app"]
 
 _STATIC = Path(__file__).parent / "static"
+
+
+async def _autostart_scanner(app: FastAPI) -> None:
+    await asyncio.sleep(2)
+    if _iface_mode() == "monitor":
+        seen = SeenNetworks()
+        scanner = ScanCapture(iface="panda0", on_packet=seen.observe)
+        scanner.start()
+        app.state.seen_networks = seen
+        app.state.scanner = scanner
 
 
 async def _drain_queue(queue: asyncio.Queue[dict[str, Any]], manager: WebSocketManager) -> None:
@@ -41,6 +53,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.seen_networks = None
     app.state.scanner = None
     drain_task = asyncio.create_task(_drain_queue(queue, manager))
+    # Auto-start scanner if interface is already in monitor mode
+    asyncio.create_task(_autostart_scanner(app))
     try:
         yield
     finally:
