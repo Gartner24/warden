@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from scapy.layers.dot11 import Dot11Beacon, Dot11Deauth
+from scapy.layers.dot11 import Dot11, Dot11Beacon
 
 __all__ = ["Dispatcher"]
 
@@ -20,8 +20,11 @@ class Dispatcher:
         self._on_deauth = on_deauth
 
     def dispatch(self, pkt: object) -> None:
-        if pkt.haslayer(Dot11Beacon):  # type: ignore[attr-defined]
+        if not pkt.haslayer(Dot11):  # type: ignore[attr-defined]
+            return
+        d11 = pkt[Dot11]  # type: ignore[index]
+        if d11.type == 0 and d11.subtype == 8:  # management / beacon
             self._on_beacon(pkt)
             self._on_evil_twin(pkt)
-        elif pkt.haslayer(Dot11Deauth):  # type: ignore[attr-defined]
+        elif d11.type == 0 and d11.subtype == 12:  # management / deauth
             self._on_deauth(pkt)
