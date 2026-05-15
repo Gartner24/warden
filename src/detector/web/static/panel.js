@@ -209,6 +209,8 @@ async function startDetector() {
   } else {
     okEl.textContent = 'Monitoreando ' + ssid + ' (' + bssid + ') — ch' + canal;
     okEl.classList.remove('hidden');
+    // Mark running immediately so refreshIfaceStatus won't restart the hopper
+    _detectorRunning = true;
     // Stop scanning/hopping — card is now locked to target channel
     stopNetworkPolling();
     document.getElementById('input-network').disabled = true;
