@@ -26,7 +26,7 @@ async def _autostart_scanner(app: FastAPI) -> None:
     if _iface_mode() == "monitor":
         capture_iface = await _ensure_mon0()
         seen = SeenNetworks()
-        scanner = ScanCapture(iface=capture_iface, on_packet=seen.observe)
+        scanner = ScanCapture(iface=capture_iface, on_packet=seen.observe, control_iface="panda0")
         scanner.start()
         app.state.seen_networks = seen
         app.state.scanner = scanner

@@ -2,8 +2,11 @@
 
 Tries scapy.sniff() first (works when process has CAP_NET_RAW / runs as root).
 Falls back to sudo -n tcpdump piped through PcapReader when scapy lacks
-raw-socket permission — requires /etc/sudoers.d/warden to allow tcpdump.
-Captures on whatever channel the interface is currently set to.
+raw-socket permission.
+
+If control_iface is provided, a second thread hops through all 2.4 GHz
+channels on that interface every 300 ms so the dropdown shows all nearby
+networks (like airodump-ng). Hopping stops when stop() is called.
 """
 from __future__ import annotations
 
@@ -18,15 +21,25 @@ from scapy.utils import PcapReader  # type: ignore[import-untyped]
 
 __all__ = ["ScanCapture"]
 
+_HOP_SEQUENCE = (1, 6, 11, 2, 7, 3, 8, 4, 9, 5, 10, 12, 13)
+
 
 class ScanCapture:
-    def __init__(self, iface: str, on_packet: Callable[[object], None]) -> None:
-        self.iface = iface
+    def __init__(
+        self,
+        iface: str,
+        on_packet: Callable[[object], None],
+        control_iface: str | None = None,
+    ) -> None:
+        self.iface = iface                      # capture interface (mon0)
+        self.control_iface = control_iface      # channel-control interface (panda0)
         self._on_packet = on_packet
         self._thread: threading.Thread | None = None
+        self._hop_thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._proc: subprocess.Popen | None = None
         self.last_error: str | None = None
+        self.current_channel: int | None = None
         self.packets_seen: int = 0
         self.started_at: float | None = None
 
@@ -39,6 +52,11 @@ class ScanCapture:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="warden-scan")
         self._thread.start()
+        if self.control_iface:
+            self._hop_thread = threading.Thread(
+                target=self._hop_loop, daemon=True, name="warden-scan-hop"
+            )
+            self._hop_thread.start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -46,12 +64,15 @@ class ScanCapture:
             self._proc.terminate()
         if self._thread:
             self._thread.join(timeout=2)
+        if self._hop_thread:
+            self._hop_thread.join(timeout=2)
 
     def status(self) -> dict:
         return {
             "running": self.is_running(),
             "iface": self.iface,
             "packets_seen": self.packets_seen,
+            "current_channel": self.current_channel,
             "last_error": self.last_error,
         }
 
@@ -106,3 +127,23 @@ class ScanCapture:
                     self._proc.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     self._proc.kill()
+
+    def _hop_loop(self) -> None:
+        """Cycle through 2.4 GHz channels on control_iface every 300 ms."""
+        i = 0
+        while not self._stop.is_set():
+            ch = _HOP_SEQUENCE[i % len(_HOP_SEQUENCE)]
+            try:
+                r = subprocess.run(
+                    ["sudo", "-n", "iw", "dev", self.control_iface, "set", "channel", str(ch)],
+                    capture_output=True, text=True, timeout=2,
+                )
+                if r.returncode == 0:
+                    self.current_channel = ch
+            except Exception:
+                pass
+            i += 1
+            for _ in range(3):
+                if self._stop.is_set():
+                    return
+                time.sleep(0.1)

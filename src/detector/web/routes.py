@@ -52,7 +52,9 @@ def _stop_scanner(request: Request) -> None:
 def _start_scanner(request: Request, iface: str = "panda0") -> None:
     _stop_scanner(request)
     seen = SeenNetworks()
-    scanner = ScanCapture(iface=iface, on_packet=seen.observe)
+    # Pass panda0 as control_iface so the hopper changes channels there
+    # while mon0 (iface) captures whatever channel the radio is tuned to.
+    scanner = ScanCapture(iface=iface, on_packet=seen.observe, control_iface="panda0")
     scanner.start()
     request.app.state.seen_networks = seen
     request.app.state.scanner = scanner
@@ -110,6 +112,11 @@ async def detector_start(request: Request) -> JSONResponse:
     canal = body.get("canal", 6)
     try:
         _stop_scanner(request)
+        # Lock card to target channel now that hopping has stopped
+        subprocess.run(
+            ["sudo", "-n", "iw", "dev", "panda0", "set", "channel", str(canal)],
+            capture_output=True, timeout=3,
+        )
         cfg = DetectorConfig(
             iface=iface,
             pcap_file=pcap,
