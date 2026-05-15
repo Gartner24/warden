@@ -125,7 +125,10 @@ async function pollAttackStatus() {
       clearInterval(_attackPollInterval);
       _attackPollInterval = null;
       state.set('lastSessionCounters', cnt);
-      api.credentials().then(cd => state.set('lastSessionCreds', cd.credenciales || [])).catch(() => {});
+      try {
+        const cd = await api.credentials();
+        state.set('lastSessionCreds', cd.credenciales || []);
+      } catch(e) {}
       showView('summary');
     }
   } catch(e) {}
