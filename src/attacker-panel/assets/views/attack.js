@@ -124,6 +124,8 @@ async function pollAttackStatus() {
     if (fase === 'FINALIZADO') {
       clearInterval(_attackPollInterval);
       _attackPollInterval = null;
+      state.set('lastSessionCounters', cnt);
+      api.credentials().then(cd => state.set('lastSessionCreds', cd.credenciales || [])).catch(() => {});
       showView('summary');
     }
   } catch(e) {}
@@ -162,6 +164,12 @@ function renderCredentials(creds) {
 async function stopAttack() {
   clearInterval(_attackPollInterval);
   _attackPollInterval = null;
-  await api.attackStop();
+  try {
+    const [, full, credData] = await Promise.all([api.attackStop(), api.status(), api.credentials()]);
+    state.set('lastSessionCounters', full.contadores || {});
+    state.set('lastSessionCreds', credData.credenciales || []);
+  } catch(e) {
+    api.attackStop().catch(() => {});
+  }
   showView('summary');
 }
