@@ -70,8 +70,15 @@ async function startOrResumeAttack() {
     if (status.ataque_activo) {
       // already running — fall through to poll loop
     } else if (fase === 'FINALIZADO') {
-      // previous attack done — redirect to summary, don't restart
-      showView('summary');
+      // show last known data on screen, don't restart, don't redirect
+      const cnt = state.get('lastSessionCounters') || {};
+      document.getElementById('attack-phase').textContent = PHASE_LABELS['FINALIZADO'];
+      document.getElementById('cnt-beacons').textContent = cnt.beacons_emitidos || 0;
+      document.getElementById('cnt-deauths').textContent = cnt.deauths_emitidos || 0;
+      document.getElementById('cnt-clients').textContent = cnt.clientes_evil_twin || 0;
+      document.getElementById('cnt-creds').textContent = cnt.credenciales_capturadas || 0;
+      const creds = state.get('lastSessionCreds') || [];
+      if (creds.length) renderCredentials(creds);
       return;
     } else {
       const r = await api.attackStart({ modo: 'cadena_automatica' });
@@ -126,7 +133,6 @@ async function pollAttackStatus() {
       clearInterval(_attackPollInterval);
       _attackPollInterval = null;
       state.set('lastSessionCounters', cnt);
-      showView('summary');
     }
   } catch(e) {}
 }
@@ -167,8 +173,13 @@ async function stopAttack() {
   try {
     const [, full] = await Promise.all([api.attackStop(), api.status()]);
     state.set('lastSessionCounters', full.contadores || {});
+    const cnt = full.contadores || {};
+    document.getElementById('attack-phase').textContent = PHASE_LABELS['FINALIZADO'];
+    document.getElementById('cnt-beacons').textContent = cnt.beacons_emitidos || 0;
+    document.getElementById('cnt-deauths').textContent = cnt.deauths_emitidos || 0;
+    document.getElementById('cnt-clients').textContent = cnt.clientes_evil_twin || 0;
+    document.getElementById('cnt-creds').textContent = cnt.credenciales_capturadas || 0;
   } catch(e) {
     api.attackStop().catch(() => {});
   }
-  showView('summary');
 }
