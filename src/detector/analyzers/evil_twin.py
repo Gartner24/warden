@@ -21,8 +21,10 @@ class EvilTwinAnalyzer:
         self._whitelist = set(config.bssid_lista_blanca)
         self._emitted: set[tuple[str, bytes]] = set()
         self._pending: list[dict[str, Any]] = []
+        self._observed_total: int = 0
 
     def observe(self, pkt: object, ts: datetime) -> None:
+        self._observed_total += 1
         from scapy.layers.dot11 import Dot11, Dot11Elt
         bssid_str = pkt[Dot11].addr2  # type: ignore[index]
         if not bssid_str:
@@ -55,6 +57,13 @@ class EvilTwinAnalyzer:
                 "bssid_clon": bssid.hex(":"),
             },
         })
+
+    def diag_snapshot(self) -> dict[str, Any]:
+        return {
+            "observed_total": self._observed_total,
+            "emitted_count": len(self._emitted),
+            "pending_count": len(self._pending),
+        }
 
     def reset(self) -> None:
         self._emitted.clear()

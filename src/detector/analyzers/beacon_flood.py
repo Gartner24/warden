@@ -18,8 +18,10 @@ class BeaconFloodAnalyzer:
         self._buf: deque[tuple[datetime, bytes]] = deque()
         self._pending: list[dict[str, Any]] = []
         self._last_alert: datetime | None = None
+        self._observed_total: int = 0
 
     def observe(self, pkt: object, ts: datetime) -> None:
+        self._observed_total += 1
         from scapy.layers.dot11 import Dot11
         bssid_str = pkt[Dot11].addr2  # type: ignore[index]
         if bssid_str is None:
@@ -52,6 +54,12 @@ class BeaconFloodAnalyzer:
             },
         })
         self._last_alert = ts
+
+    def diag_snapshot(self) -> dict[str, Any]:
+        return {
+            "observed_total": self._observed_total,
+            "pending_count": len(self._pending),
+        }
 
     def drain(self) -> list[dict[str, Any]]:
         out, self._pending = self._pending, []

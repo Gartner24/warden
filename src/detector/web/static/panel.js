@@ -87,6 +87,8 @@ function connectWS() {
       recomputeThreat();
     } else if (msg.tipo === 'init' && msg.alertas_recientes) {
       msg.alertas_recientes.forEach(addAlert);
+    } else if (msg.tipo === 'diag') {
+      updateDiagPanel(msg);
     }
   };
   ws.onclose = () => setTimeout(connectWS, 2000);
@@ -185,6 +187,18 @@ async function setManagedMode() {
     errEl.classList.remove('hidden');
   }
   await refreshIfaceStatus();
+}
+
+function updateDiagPanel(data) {
+  const el = document.getElementById('detector-activity');
+  if (!el) return;
+  el.innerHTML = `<table class="w-full text-xs text-gray-400 mt-2">
+    <tr><th class="text-left">Detector</th><th class="text-right">Observados</th><th class="text-right">Info</th></tr>
+    <tr><td>Beacon Flood</td><td class="text-right">${data.beacon_flood?.observed_total ?? 0}</td><td class="text-right">-</td></tr>
+    <tr><td>Deauth</td><td class="text-right">${data.deauth?.observed_total ?? 0}</td><td class="text-right">drop:${data.deauth?.dropped_wrong_bssid ?? 0}</td></tr>
+    <tr><td>Evil Twin</td><td class="text-right">${data.evil_twin?.observed_total ?? 0}</td><td class="text-right">-</td></tr>
+    <tr><td>Correlador</td><td class="text-right">-</td><td class="text-right">${(data.correlator?.timestamps_seen ?? []).join(', ') || '-'}</td></tr>
+  </table>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

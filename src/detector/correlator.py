@@ -52,6 +52,13 @@ class ChainCorrelator:
                     },
                 })
 
+    def diag_snapshot(self) -> dict[str, Any]:
+        return {
+            "timestamps_seen": list(self._timestamps.keys()),
+            "last_emitted_ts": self._last_emitted_ts.isoformat() if self._last_emitted_ts else None,
+            "pending_count": len(self._pending),
+        }
+
     def reset(self) -> None:
         self._timestamps.clear()
         self._last_emitted_ts = None

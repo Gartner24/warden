@@ -61,6 +61,8 @@ async def get_status(request: Request) -> dict[str, Any]:
 @router.post("/api/session/reset")
 async def session_reset(request: Request) -> dict[str, Any]:
     manager = _manager(request)
+    runner = _runner(request)
+    runner.reset_correlator()
     await manager.broadcast({"tipo": "session_reset"})
     return {"ok": True, "mensaje": "Sesion reiniciada."}
 

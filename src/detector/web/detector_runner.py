@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any
+
+_LOG = logging.getLogger(__name__)
 
 from detector.analyzers.beacon_flood import BeaconFloodAnalyzer
 from detector.analyzers.deauth import DeauthAnalyzer
@@ -37,6 +40,8 @@ class DetectorRunner:
         self._stop_event = threading.Event()
         self._state = "detenido"
         self._lock = threading.Lock()
+        self._correlator: Any = None
+        self._evil_twin: Any = None
 
     @property
     def state(self) -> str:
@@ -59,6 +64,12 @@ class DetectorRunner:
             self._thread.join(timeout=5)
         self._state = "detenido"
 
+    def reset_correlator(self) -> None:
+        if self._correlator is not None:
+            self._correlator.reset()
+        if self._evil_twin is not None:
+            self._evil_twin.reset()
+
     def _run(self, config: DetectorConfig) -> None:
         try:
             reporter = Reporter(queue=self._queue)
@@ -66,6 +77,8 @@ class DetectorRunner:
             da = DeauthAnalyzer(config)
             et = EvilTwinAnalyzer(config)
             cc = ChainCorrelator(config)
+            self._correlator = cc
+            self._evil_twin = et
             session = Session(reporter)
             _ts: list[datetime] = [datetime.now(timezone.utc)]
             dispatcher = Dispatcher(
@@ -112,10 +125,28 @@ class DetectorRunner:
 
                 cap = LiveCapture(config=config, on_packet=_on_packet)
                 cap.start()
-                self._stop_event.wait()
+                while not self._stop_event.is_set():
+                    try:
+                        self._queue.put_nowait({
+                            "tipo": "diag",
+                            "beacon_flood": bf.diag_snapshot(),
+                            "deauth": da.diag_snapshot(),
+                            "evil_twin": et.diag_snapshot(),
+                            "correlator": cc.diag_snapshot(),
+                        })
+                    except Exception:
+                        pass
+                    self._stop_event.wait(timeout=1.0)
                 cap.stop()
-        except Exception:
+        except Exception as exc:
+            _LOG.exception("detector thread crashed")
             self._state = "error"
+            try:
+                self._queue.put_nowait({"tipo": "error", "mensaje": str(exc)})
+            except Exception:
+                pass
         finally:
+            self._correlator = None
+            self._evil_twin = None
             if self._state != "error":
                 self._state = "detenido"
