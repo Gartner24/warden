@@ -19,9 +19,10 @@ function renderSummary() {
   loadSummary();
 }
 
-async function loadSummary() {
+async function loadSummary(attempt = 0) {
   try {
     const [statusData, credData] = await Promise.all([api.status(), api.credentials()]);
+    console.log('[summary] status:', JSON.stringify(statusData), 'creds:', JSON.stringify(credData));
     const cnt = statusData.contadores || {};
     const creds = credData.credenciales || [];
     const startMs = state.get('startTimeMs') ?? Number(localStorage.getItem('warden.startTimeMs') ?? 0) || null;
@@ -34,11 +35,21 @@ async function loadSummary() {
         <div class="flex justify-between"><span class="text-gray-400">Deauths emitidos:</span><span class="text-orange-400">${cnt.deauths_emitidos || 0}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Clientes Evil Twin:</span><span class="text-blue-400">${cnt.clientes_evil_twin || 0}</span></div>
         <div class="flex justify-between"><span class="text-gray-400">Credenciales:</span><span class="text-green-400">${creds.length}</span></div>
-        ${creds.length > 0 ? '<hr class="border-gray-600"/><p class="font-semibold">Credenciales:</p>' +
-          creds.map(c => `<div class="font-mono bg-gray-700 rounded p-2">${c.usuario} / ${c.password}</div>`).join('') : ''}
+        ${creds.length > 0 ? '<hr class="border-gray-600"/><p class="font-semibold mt-2">Credenciales capturadas:</p>' +
+          creds.map(c => `<div class="font-mono bg-gray-700 rounded p-2 mt-1">${c.usuario} / ${c.password}</div>`).join('') : ''}
       </div>`;
   } catch(e) {
-    document.getElementById('summary-content').innerHTML = '<p class="text-red-400">Error cargando resumen.</p>';
+    console.error('[summary] intento', attempt, 'fallo:', e.message || e);
+    if (attempt < 4) {
+      const el = document.getElementById('summary-content');
+      if (el) el.innerHTML = `<p class="text-gray-400 text-sm">Conectando con ESP32... (${attempt + 1}/4)</p>`;
+      setTimeout(() => loadSummary(attempt + 1), 1500);
+      return;
+    }
+    const el = document.getElementById('summary-content');
+    if (el) el.innerHTML = `
+      <p class="text-red-400 text-sm mb-3">No se pudo cargar el resumen. Verifica conexion con el ESP32.</p>
+      <button onclick="loadSummary(0)" class="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm">Reintentar</button>`;
   }
 }
 
