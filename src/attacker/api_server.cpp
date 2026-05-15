@@ -69,10 +69,11 @@ void api_server_init() {
         doc["uptime_ms"] = millis();
         doc["ataque_activo"] = g_chain_state.ataque_activo;
         JsonObject cnt = doc["contadores"].to<JsonObject>();
-        cnt["beacons_emitidos"] = g_chain_state.beacons_emitidos;
-        cnt["deauths_emitidos"] = g_chain_state.deauths_emitidos;
-        cnt["clientes_evil_twin"] = g_chain_state.clientes_evil_twin;
-        cnt["credenciales_capturadas"] = g_chain_state.credenciales_capturadas;
+        bool use_snap = (g_chain_state.estado == EstadoCadena::FINALIZADO && g_last_session.valid);
+        cnt["beacons_emitidos"]        = use_snap ? g_last_session.beacons_emitidos        : g_chain_state.beacons_emitidos;
+        cnt["deauths_emitidos"]        = use_snap ? g_last_session.deauths_emitidos        : g_chain_state.deauths_emitidos;
+        cnt["clientes_evil_twin"]      = use_snap ? g_last_session.clientes_evil_twin      : g_chain_state.clientes_evil_twin;
+        cnt["credenciales_capturadas"] = use_snap ? g_last_session.credenciales_capturadas : g_chain_state.credenciales_capturadas;
         String body; serializeJson(doc, body);
         send_json(req, 200, body);
     });

@@ -23,6 +23,15 @@ struct EstadoCadenaInfo {
 
 extern EstadoCadenaInfo g_chain_state;
 
+struct LastSessionCounters {
+    uint32_t beacons_emitidos;
+    uint32_t deauths_emitidos;
+    uint32_t clientes_evil_twin;
+    uint32_t credenciales_capturadas;
+    bool valid;
+};
+extern LastSessionCounters g_last_session;
+
 void chain_controller_init();
 void chain_controller_start(const char* modo);
 void chain_controller_stop();

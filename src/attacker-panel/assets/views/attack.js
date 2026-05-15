@@ -64,11 +64,15 @@ function renderAttack() {
 }
 
 async function startOrResumeAttack() {
-  // Check if attack is already running before trying to start
   try {
     const status = await api.attackStatus();
+    const fase = status.estado_cadena || 'IDLE';
     if (status.ataque_activo) {
-      // Already running — just poll
+      // already running — fall through to poll loop
+    } else if (fase === 'FINALIZADO') {
+      // previous attack done — redirect to summary, don't restart
+      showView('summary');
+      return;
     } else {
       const r = await api.attackStart({ modo: 'cadena_automatica' });
       if (r.ok === false) {

@@ -12,6 +12,7 @@
 #include <string.h>
 
 EstadoCadenaInfo g_chain_state;
+LastSessionCounters g_last_session = {0, 0, 0, 0, false};
 
 static TaskHandle_t _ctrl_task = nullptr;
 static char _modo[32] = {0};
@@ -73,6 +74,11 @@ static void chain_task(void* pvParam) {
     evil_twin_stop();
 
 done:
+    g_last_session.beacons_emitidos        = g_chain_state.beacons_emitidos;
+    g_last_session.deauths_emitidos        = g_chain_state.deauths_emitidos;
+    g_last_session.clientes_evil_twin      = g_chain_state.clientes_evil_twin;
+    g_last_session.credenciales_capturadas = g_chain_state.credenciales_capturadas;
+    g_last_session.valid                   = true;
     transition_to(EstadoCadena::FINALIZADO);
     g_chain_state.ataque_activo = false;
     _ctrl_task = nullptr;
@@ -90,6 +96,7 @@ void chain_controller_start(const char* modo) {
     g_chain_state.deauths_emitidos = 0;
     g_chain_state.clientes_evil_twin = 0;
     g_chain_state.credenciales_capturadas = 0;
+    g_last_session.valid = false;
     cred_reset();
     strncpy(_modo, modo, sizeof(_modo) - 1);
     g_chain_state.ataque_activo = true;
