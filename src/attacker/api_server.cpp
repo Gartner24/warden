@@ -97,7 +97,12 @@ void api_server_init() {
             uint8_t bssid[6] = {0};
             sscanf(bssid_str.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
                    &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
-            recon_clients_start(bssid, g_config.canal);
+            uint8_t canal = g_config.canal;
+            if (req->hasParam("canal")) {
+                int c = req->getParam("canal")->value().toInt();
+                if (c >= 1 && c <= 13) canal = (uint8_t)c;
+            }
+            recon_clients_start(bssid, canal);
             send_json(req, 200,
                 "{\"ok\":true,\"scanning\":true,\"clientes_detectados\":0,\"clientes\":[]}");
             return;
@@ -107,6 +112,14 @@ void api_server_init() {
         recon_clients_fill(doc);
         String body; serializeJson(doc, body);
         send_json(req, 200, body);
+    });
+
+    // POST /clients/stop
+    server.on("/clients/stop", HTTP_POST, [](AsyncWebServerRequest* req) {
+        if (g_recon_state == RECON_RUNNING) {
+            g_recon_state = RECON_IDLE;
+        }
+        send_json(req, 200, "{\"ok\":true}");
     });
 
     // GET /oui-lookup

@@ -36,7 +36,7 @@ void recon_scan(JsonDocument& out) {
 // --- Async client discovery ---
 
 struct ClientEntry { uint8_t mac[6]; uint16_t frames; };
-static ClientEntry _clients[16];
+static ClientEntry _clients[32];
 static int _client_count = 0;
 static uint8_t _sniff_bssid[6];
 static uint8_t _sniff_canal = 6;
@@ -49,7 +49,7 @@ static void _record_client(const uint8_t* mac) {
     for (int i = 0; i < _client_count; i++) {
         if (_mac_eq(_clients[i].mac, mac)) { _clients[i].frames++; return; }
     }
-    if (_client_count < 16) {
+    if (_client_count < 32) {
         memcpy(_clients[_client_count].mac, mac, 6);
         _clients[_client_count].frames = 1;
         _client_count++;
@@ -69,7 +69,13 @@ static void _promisc_cb(void* buf, wifi_promiscuous_pkt_type_t type) {
     const uint8_t* addr3 = p->payload + 16;
 
     if (frame_type == 0) {
-        // Management frames: addr3 is always BSSID
+        uint8_t subtype = (fc0 >> 4) & 0x0F;
+        // Probe request (subtype 4): addr2 = requesting client, addr1/addr3 = broadcast
+        if (subtype == 4) {
+            _record_client(addr2);
+            return;
+        }
+        // For all other management frames, filter by BSSID
         if (!_mac_eq(addr3, _sniff_bssid)) return;
         if (!_mac_eq(addr2, _sniff_bssid)) _record_client(addr2);
         if (!_mac_eq(addr1, _sniff_bssid)) _record_client(addr1);
@@ -95,7 +101,9 @@ static void _scan_task(void* pvParam) {
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_channel(_sniff_canal, WIFI_SECOND_CHAN_NONE);
 
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    while (g_recon_state == RECON_RUNNING) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
 
     esp_wifi_set_promiscuous(false);
     esp_wifi_set_promiscuous_rx_cb(nullptr);
@@ -106,7 +114,11 @@ static void _scan_task(void* pvParam) {
 }
 
 void recon_clients_start(const uint8_t bssid[6], uint8_t canal) {
-    if (g_recon_state == RECON_RUNNING) return;
+    if (g_recon_state == RECON_RUNNING) {
+        if (_mac_eq(_sniff_bssid, bssid)) return;
+        g_recon_state = RECON_IDLE;
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
     memcpy(_sniff_bssid, bssid, 6);
     _sniff_canal = canal;
     g_recon_state = RECON_RUNNING;
