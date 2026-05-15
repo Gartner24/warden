@@ -156,6 +156,7 @@ Add to `/etc/sudoers.d/warden`:
 ```
 <your-user> ALL=(ALL) NOPASSWD: /usr/bin/bash /path/to/warden/scripts/setup-monitor-mode.sh
 <your-user> ALL=(ALL) NOPASSWD: /usr/bin/ip, /usr/bin/iw
+<your-user> ALL=(ALL) NOPASSWD: /usr/bin/tcpdump
 ```
 
 ---
@@ -179,6 +180,25 @@ uvicorn detector.web.server:app --host 0.0.0.0 --port 8000
 ```
 
 Open `http://localhost:8000` in a browser.
+
+### Sniff permissions
+
+The detector uses `scapy.sniff()` which needs raw-socket access. Two options:
+
+```bash
+# Option A — run the server with sudo (simplest)
+sudo .venv/bin/uvicorn detector.web.server:app --host 0.0.0.0 --port 8000
+
+# Option B — grant the Python binary the capability once (persists across reboots)
+sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+```
+
+Channel hopping (which lets the dropdown show all nearby networks automatically)
+additionally needs `iw` via passwordless sudo — add to `/etc/sudoers.d/warden`:
+
+```
+<your-user> ALL=(ALL) NOPASSWD: /usr/bin/iw
+```
 
 **Workflow in the panel:**
 1. Set **Canal a monitorear** to match the victim AP channel (e.g. `1`)

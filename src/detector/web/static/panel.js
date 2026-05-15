@@ -42,10 +42,40 @@ function populateNetworkSelect(networks) {
   status.textContent = networks.length ? `${networks.length} redes detectadas` : '';
 }
 
+async function refreshScannerStatus() {
+  const el = document.getElementById('scanner-state');
+  if (!el) return;
+  try {
+    const r = await fetch(BASE + '/api/scanner/status');
+    const data = await r.json();
+    const sc = data.scanner || {};
+    if (sc.last_error) {
+      el.innerHTML = `<span class="text-red-400">Error de captura: ${sc.last_error}</span>`;
+      return;
+    }
+    if (!sc.running) {
+      el.textContent = 'Escaner detenido';
+      return;
+    }
+    let line = `Escaner: corriendo en ${sc.iface}`;
+    if (sc.current_channel) line += `, canal ${sc.current_channel}`;
+    line += `, ${sc.packets_seen} paquetes, ${data.networks_count} redes`;
+    if (sc.hop_error) {
+      line += ` <span class="text-yellow-400">(sin permisos para cambiar canal)</span>`;
+      el.innerHTML = line;
+    } else {
+      el.textContent = line;
+    }
+  } catch (e) {
+    // ignore fetch errors — non-critical status
+  }
+}
+
 function startNetworkPolling() {
   stopNetworkPolling();
-  refreshNetworks(); // immediate first fetch
-  _networkPollInterval = setInterval(refreshNetworks, 2000);
+  refreshNetworks();
+  refreshScannerStatus();
+  _networkPollInterval = setInterval(() => { refreshNetworks(); refreshScannerStatus(); }, 2000);
 }
 
 function stopNetworkPolling() {
@@ -53,6 +83,8 @@ function stopNetworkPolling() {
     clearInterval(_networkPollInterval);
     _networkPollInterval = null;
   }
+  const el = document.getElementById('scanner-state');
+  if (el) el.textContent = '';
 }
 
 function setThreatState(level) {

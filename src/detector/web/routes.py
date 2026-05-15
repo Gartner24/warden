@@ -264,3 +264,14 @@ async def get_networks(request: Request) -> dict[str, Any]:
     if seen is None:
         return {"networks": []}
     return {"networks": seen.snapshot()}
+
+
+@router.get("/api/scanner/status")
+async def scanner_status(request: Request) -> dict[str, Any]:
+    scanner = getattr(request.app.state, "scanner", None)
+    seen: SeenNetworks | None = getattr(request.app.state, "seen_networks", None)
+    return {
+        "scanner": scanner.status() if scanner else {"running": False},
+        "networks_count": len(seen.snapshot()) if seen else 0,
+        "iface_mode": _iface_mode(),
+    }
