@@ -35,20 +35,34 @@ const api = {
     const cache = state.get('ouiCache') || {};
     const prefix = mac.substring(0, 8).toUpperCase();
     if (cache[prefix] !== undefined) return cache[prefix];
+
+    // Primary: macvendors.com (online, accurate)
     try {
       const r = await fetch(`https://api.macvendors.com/${mac}`);
-      if (!r.ok) {
-        console.warn(`[OUI] ${mac} HTTP ${r.status}`);
-        return 'Desconocido';
+      if (r.ok) {
+        const vendor = (await r.text()).trim() || 'Desconocido';
+        cache[prefix] = vendor;
+        state.set('ouiCache', cache);
+        return vendor;
       }
-      const vendor = (await r.text()).trim() || 'Desconocido';
-      cache[prefix] = vendor;
-      state.set('ouiCache', cache);
-      return vendor;
+      console.warn(`[OUI] macvendors ${mac} HTTP ${r.status} — trying local`);
     } catch(e) {
-      console.warn(`[OUI] ${mac} fetch error:`, e.message || e);
-      return 'Desconocido';
+      console.warn(`[OUI] macvendors ${mac} error: ${e.message} — trying local`);
     }
+
+    // Fallback: ESP32 embedded OUI table
+    try {
+      const r = await fetch(`${API_BASE}/oui-lookup?mac=${encodeURIComponent(mac)}`);
+      if (r.ok) {
+        const data = await r.json();
+        const vendor = data.encontrado ? data.fabricante : 'Desconocido';
+        cache[prefix] = vendor;
+        state.set('ouiCache', cache);
+        return vendor;
+      }
+    } catch(e) {}
+
+    return 'Desconocido';
   },
   async getConfig() {
     const r = await fetch(API_BASE + '/config');
