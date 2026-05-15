@@ -14,9 +14,14 @@ const api = {
     const r = await fetch(API_BASE + '/scan');
     return r.json();
   },
-  async clients(bssid) {
-    const r = await fetch(`${API_BASE}/clients?bssid=${encodeURIComponent(bssid)}`);
+  async clients(bssid, canal) {
+    const url = `${API_BASE}/clients?bssid=${encodeURIComponent(bssid)}&canal=${encodeURIComponent(canal)}`;
+    const r = await fetch(url);
     return r.json();
+  },
+  async clientsStop() {
+    const r = await fetch(`${API_BASE}/clients/stop`, { method: 'POST' });
+    return r.json().catch(() => ({}));
   },
   async clientsResult() {
     const r = await fetch(`${API_BASE}/clients`);
@@ -25,6 +30,21 @@ const api = {
   async ouiLookup(mac) {
     const r = await fetch(`${API_BASE}/oui-lookup?mac=${encodeURIComponent(mac)}`);
     return r.json();
+  },
+  async ouiLookupCached(mac) {
+    const cache = state.get('ouiCache') || {};
+    const prefix = mac.substring(0, 8).toUpperCase();
+    if (cache[prefix] !== undefined) return cache[prefix];
+    try {
+      const r = await fetch(`${API_BASE}/oui-lookup?mac=${encodeURIComponent(mac)}`);
+      const data = await r.json();
+      const vendor = data.encontrado ? data.fabricante : 'Desconocido';
+      cache[prefix] = vendor;
+      state.set('ouiCache', cache);
+      return vendor;
+    } catch(e) {
+      return 'Desconocido';
+    }
   },
   async getConfig() {
     const r = await fetch(API_BASE + '/config');

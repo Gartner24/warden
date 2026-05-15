@@ -1,4 +1,7 @@
 function showView(name) {
+  if (name !== 'recon' && typeof stopReconScan === 'function') {
+    stopReconScan();
+  }
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
   const viewEl = document.getElementById('view-' + name);

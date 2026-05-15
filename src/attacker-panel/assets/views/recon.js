@@ -1,3 +1,6 @@
+let _clientPollTimer = null;
+let _pollBssid = null;
+
 function renderRecon() {
   const el = document.getElementById('view-recon');
   el.innerHTML = `
@@ -44,7 +47,6 @@ function renderNetworkTable(redes) {
       <td class="px-3 py-2">${r.canal || ''}</td>
       <td class="px-3 py-2">${r.rssi_dbm || ''}dBm</td>
       <td class="px-3 py-2">${r.cifrado || ''}</td>
-      <td class="px-3 py-2 text-xs text-gray-400">${r.fabricante || ''}</td>
     </tr>`;
   }).join('');
   el.innerHTML = `
@@ -56,7 +58,6 @@ function renderNetworkTable(redes) {
           <th class="px-3 py-2 text-left">Canal</th>
           <th class="px-3 py-2 text-left">RSSI</th>
           <th class="px-3 py-2 text-left">Cifrado</th>
-          <th class="px-3 py-2 text-left">Fabricante</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -66,33 +67,71 @@ function renderNetworkTable(redes) {
 
 async function selectNetwork(idx) {
   const red = window._recon_redes[idx];
+  const prevSelected = state.get('selectedNetwork');
+  const sameBssid = prevSelected && prevSelected.bssid_objetivo === red.bssid_objetivo;
+
   state.set('selectedNetwork', red);
   state.set('selectedVictim', null);
   document.getElementById('scan-status').textContent =
     `Seleccionada: ${red.ssid_objetivo} (${red.bssid_objetivo}) — continuar en Etica`;
   renderNetworkTable(window._recon_redes);
 
+  if (sameBssid) {
+    const byBssid = state.get('clientsByBssid') || {};
+    renderClientTable(Object.values(byBssid[red.bssid_objetivo] || {}));
+    return;
+  }
+
+  try { await api.clientsStop(); } catch(e) {}
+  const byBssid = state.get('clientsByBssid') || {};
+  byBssid[red.bssid_objetivo] = {};
+  state.set('clientsByBssid', byBssid);
+
+  _startClientPoll(red.bssid_objetivo, red.canal);
+}
+
+function _startClientPoll(bssid, canal) {
+  _stopClientPoll();
+  _pollBssid = bssid;
   const clientEl = document.getElementById('client-table');
-  clientEl.innerHTML = '<p class="text-gray-400 text-sm">Iniciando escaneo de clientes (~7 s)...</p>';
+  if (clientEl) {
+    clientEl.innerHTML = '<p class="text-gray-400 text-sm">Iniciando escaneo de clientes...</p>';
+  }
 
-  // Kick off async scan — connection may drop briefly while ESP32 switches channel
-  try {
-    await api.clients(red.bssid_objetivo);
-  } catch(e) { /* expected: connection resets while ESP32 sniffs */ }
+  api.clients(bssid, canal).catch(() => {});
 
-  // Poll until scanning:false
-  clientEl.innerHTML = '<p class="text-gray-400 text-sm">Escaneando clientes... (la conexion puede recuperarse en unos segundos)</p>';
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await new Promise(r => setTimeout(r, 1500));
+  _clientPollTimer = setInterval(async () => {
+    if (_pollBssid !== bssid) return;
     try {
       const data = await api.clientsResult();
-      if (!data.scanning) {
-        renderClientTable(data.clientes || []);
-        return;
+      const incoming = data.clientes || [];
+      const byBssid = state.get('clientsByBssid') || {};
+      const map = byBssid[bssid] || {};
+      incoming.forEach(c => {
+        if (!map[c.mac]) map[c.mac] = c;
+        else map[c.mac].frames_observados = c.frames_observados;
+      });
+      byBssid[bssid] = map;
+      state.set('clientsByBssid', byBssid);
+      const sel = state.get('selectedNetwork');
+      if (sel && sel.bssid_objetivo === bssid) {
+        renderClientTable(Object.values(map));
       }
-    } catch(e) { /* AP may still be recovering */ }
+    } catch(e) {}
+  }, 1500);
+}
+
+function _stopClientPoll() {
+  if (_clientPollTimer) {
+    clearInterval(_clientPollTimer);
+    _clientPollTimer = null;
   }
-  clientEl.innerHTML = '<p class="text-gray-500 text-sm">No se detectaron clientes. Intente de nuevo.</p>';
+  _pollBssid = null;
+}
+
+function stopReconScan() {
+  _stopClientPoll();
+  api.clientsStop().catch(() => {});
 }
 
 function renderClientTable(clientes) {
@@ -117,7 +156,7 @@ function renderClientTable(clientes) {
   }).join('');
   el.innerHTML = `
     <div class="flex items-center justify-between mb-2">
-      <h3 class="font-semibold">Clientes asociados</h3>
+      <h3 class="font-semibold">Clientes asociados <span class="text-xs text-gray-400">(${clientes.length} detectados, escaneando...)</span></h3>
       <span class="text-xs text-gray-400">Haga clic en un cliente para seleccionarlo como victima del deauth</span>
     </div>
     <table class="w-full text-sm bg-gray-800 rounded-lg overflow-hidden">
@@ -144,8 +183,6 @@ function selectVictim(mac) {
 async function lookupOui(mac) {
   const el = document.getElementById('oui-' + mac);
   if (!el) return;
-  try {
-    const data = await api.ouiLookup(mac);
-    el.textContent = data.fabricante || 'Desconocido';
-  } catch(e) { el.textContent = 'Error'; }
+  const vendor = await api.ouiLookupCached(mac);
+  el.textContent = vendor;
 }
