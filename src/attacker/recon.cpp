@@ -40,6 +40,9 @@ static ClientEntry _clients[32];
 static int _client_count = 0;
 static uint8_t _sniff_bssid[6];
 static uint8_t _sniff_canal = 6;
+static TickType_t _scan_start_tick = 0;
+
+#define SCAN_TIMEOUT_TICKS pdMS_TO_TICKS(15000)
 
 static bool _mac_is_multicast(const uint8_t* m) { return (m[0] & 0x01) != 0; }
 static bool _mac_eq(const uint8_t* a, const uint8_t* b) { return memcmp(a, b, 6) == 0; }
@@ -96,12 +99,14 @@ static void _promisc_cb(void* buf, wifi_promiscuous_pkt_type_t type) {
 static void _scan_task(void* pvParam) {
     _client_count = 0;
     memset(_clients, 0, sizeof(_clients));
+    _scan_start_tick = xTaskGetTickCount();
 
     esp_wifi_set_promiscuous_rx_cb(_promisc_cb);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_channel(_sniff_canal, WIFI_SECOND_CHAN_NONE);
 
     while (g_recon_state == RECON_RUNNING) {
+        if ((xTaskGetTickCount() - _scan_start_tick) >= SCAN_TIMEOUT_TICKS) break;
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 
@@ -130,6 +135,12 @@ void recon_clients_fill(JsonDocument& out) {
     out["ok"] = true;
     out["scanning"] = (g_recon_state == RECON_RUNNING);
     out["clientes_detectados"] = _client_count;
+    out["scan_timeout_ms"] = (uint32_t)15000;
+    if (_scan_start_tick > 0) {
+        TickType_t elapsed = xTaskGetTickCount() - _scan_start_tick;
+        uint32_t elapsed_ms = (uint32_t)(elapsed * portTICK_PERIOD_MS);
+        out["elapsed_ms"] = elapsed_ms < 15000 ? elapsed_ms : (uint32_t)15000;
+    }
     JsonArray arr = out["clientes"].to<JsonArray>();
     for (int i = 0; i < _client_count; i++) {
         char mac_str[18];

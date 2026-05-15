@@ -1,5 +1,6 @@
 let _clientPollTimer = null;
 let _pollBssid = null;
+let _scanStartMs = null;
 
 function renderRecon() {
   const el = document.getElementById('view-recon');
@@ -78,7 +79,7 @@ async function selectNetwork(idx) {
 
   if (sameBssid) {
     const byBssid = state.get('clientsByBssid') || {};
-    renderClientTable(Object.values(byBssid[red.bssid_objetivo] || {}));
+    renderClientTable(Object.values(byBssid[red.bssid_objetivo] || {}), _clientPollTimer !== null);
     return;
   }
 
@@ -93,9 +94,10 @@ async function selectNetwork(idx) {
 function _startClientPoll(bssid, canal) {
   _stopClientPoll();
   _pollBssid = bssid;
+  _scanStartMs = Date.now();
   const clientEl = document.getElementById('client-table');
   if (clientEl) {
-    clientEl.innerHTML = '<p class="text-gray-400 text-sm">Iniciando escaneo de clientes...</p>';
+    clientEl.innerHTML = '<p class="text-gray-400 text-sm">Iniciando escaneo de clientes... 0/15s</p>';
   }
 
   api.clients(bssid, canal).catch(() => {});
@@ -104,6 +106,13 @@ function _startClientPoll(bssid, canal) {
     if (_pollBssid !== bssid) return;
     try {
       const data = await api.clientsResult();
+      const scanning = data.scanning !== false;
+      const elapsed = data.elapsed_ms != null
+        ? Math.round(data.elapsed_ms / 1000)
+        : Math.round((Date.now() - _scanStartMs) / 1000);
+      const timeout = data.scan_timeout_ms != null
+        ? Math.round(data.scan_timeout_ms / 1000)
+        : 15;
       const incoming = data.clientes || [];
       const byBssid = state.get('clientsByBssid') || {};
       const map = byBssid[bssid] || {};
@@ -115,8 +124,9 @@ function _startClientPoll(bssid, canal) {
       state.set('clientsByBssid', byBssid);
       const sel = state.get('selectedNetwork');
       if (sel && sel.bssid_objetivo === bssid) {
-        renderClientTable(Object.values(map));
+        renderClientTable(Object.values(map), scanning, elapsed, timeout);
       }
+      if (!scanning) _stopClientPoll();
     } catch(e) {}
   }, 1500);
 }
@@ -134,12 +144,26 @@ function stopReconScan() {
   api.clientsStop().catch(() => {});
 }
 
-function renderClientTable(clientes) {
+function renderClientTable(clientes, scanning = true, elapsed = 0, timeout = 15) {
   const el = document.getElementById('client-table');
+  const rescanBtn = `<button onclick="rescanClients()" class="ml-2 px-2 py-0.5 bg-gray-600 hover:bg-gray-700 rounded text-xs font-normal">Re-escanear</button>`;
+
   if (!clientes.length) {
-    el.innerHTML = '<p class="text-gray-500 text-sm mt-2">Sin clientes detectados en este momento.</p>';
+    if (scanning) {
+      el.innerHTML = `<p class="text-gray-400 text-sm mt-2">Buscando clientes... ${elapsed}/${timeout}s</p>`;
+    } else {
+      el.innerHTML = `<div class="mt-2">
+        <p class="text-gray-500 text-sm">Sin clientes detectados — los clientes inactivos no emiten tramas.</p>
+        ${rescanBtn}
+      </div>`;
+    }
     return;
   }
+
+  const statusText = scanning
+    ? `<span class="text-yellow-400">buscando... ${elapsed}/${timeout}s</span>`
+    : `<span class="text-green-400">escaneo completo</span>${rescanBtn}`;
+
   const selectedVictim = state.get('selectedVictim');
   const rows = clientes.map(c => {
     const isSel = selectedVictim && selectedVictim === c.mac;
@@ -154,10 +178,13 @@ function renderClientTable(clientes) {
       <td class="px-3 py-2 text-xs text-gray-400" id="oui-${c.mac}">...</td>
     </tr>`;
   }).join('');
+
   el.innerHTML = `
     <div class="flex items-center justify-between mb-2">
-      <h3 class="font-semibold">Clientes asociados <span class="text-xs text-gray-400">(${clientes.length} detectados, escaneando...)</span></h3>
-      <span class="text-xs text-gray-400">Haga clic en un cliente para seleccionarlo como victima del deauth</span>
+      <h3 class="font-semibold">Clientes asociados
+        <span class="text-xs text-gray-400 font-normal ml-1">${clientes.length} detectados — ${statusText}</span>
+      </h3>
+      <span class="text-xs text-gray-400">Haga clic para seleccionar victima</span>
     </div>
     <table class="w-full text-sm bg-gray-800 rounded-lg overflow-hidden">
       <thead class="bg-gray-700">
@@ -171,6 +198,16 @@ function renderClientTable(clientes) {
     </table>`;
   window._recon_clientes = clientes;
   clientes.forEach(c => lookupOui(c.mac));
+}
+
+async function rescanClients() {
+  const sel = state.get('selectedNetwork');
+  if (!sel) return;
+  try { await api.clientsStop(); } catch(e) {}
+  const byBssid = state.get('clientsByBssid') || {};
+  byBssid[sel.bssid_objetivo] = {};
+  state.set('clientsByBssid', byBssid);
+  _startClientPoll(sel.bssid_objetivo, sel.canal);
 }
 
 function selectVictim(mac) {
