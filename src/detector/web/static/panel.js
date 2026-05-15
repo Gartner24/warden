@@ -207,17 +207,28 @@ async function startDetector() {
     errEl.textContent = 'Error al iniciar: ' + (data.error || JSON.stringify(data));
     errEl.classList.remove('hidden');
   } else {
-    okEl.textContent = 'Monitoreando ' + ssid + ' (' + bssid + ')';
+    okEl.textContent = 'Monitoreando ' + ssid + ' (' + bssid + ') — ch' + canal;
     okEl.classList.remove('hidden');
+    // Stop scanning/hopping — card is now locked to target channel
+    stopNetworkPolling();
+    document.getElementById('input-network').disabled = true;
+    // Update badge immediately to show locked channel
+    await refreshIfaceStatus();
   }
 }
 
 async function stopDetector() {
   await fetch(BASE + '/api/detector/stop', { method: 'POST' });
+  document.getElementById('input-network').disabled = false;
+  document.getElementById('detector-success').classList.add('hidden');
+  // Restart scanner so dropdown repopulates and hopping resumes
+  const sr = await fetch(BASE + '/api/scanner/start', { method: 'POST' });
+  if ((await sr.json()).ok) startNetworkPolling();
 }
 
 async function resetSession() {
   await fetch(BASE + '/api/session/reset', { method: 'POST' });
+  resetCounters(); // reset UI immediately, don't depend on WS round-trip
 }
 
 async function refreshIfaceStatus() {
@@ -230,7 +241,7 @@ async function refreshIfaceStatus() {
     if (mode === 'monitor') {
       badge.textContent = 'monitor' + ch;
       badge.className = 'px-3 py-1 rounded-full text-sm font-medium bg-blue-700 text-white';
-      if (!_networkPollInterval) {
+      if (!_networkPollInterval && !_detectorRunning) {
         await fetch(BASE + '/api/scanner/start', { method: 'POST' });
         startNetworkPolling();
       }
