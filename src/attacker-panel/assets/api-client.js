@@ -37,11 +37,16 @@ const api = {
     if (cache[prefix] !== undefined) return cache[prefix];
     try {
       const r = await fetch(`https://api.macvendors.com/${mac}`);
-      const vendor = r.ok ? (await r.text()).trim() || 'Desconocido' : 'Desconocido';
+      if (!r.ok) {
+        console.warn(`[OUI] ${mac} HTTP ${r.status}`);
+        return 'Desconocido';
+      }
+      const vendor = (await r.text()).trim() || 'Desconocido';
       cache[prefix] = vendor;
       state.set('ouiCache', cache);
       return vendor;
     } catch(e) {
+      console.warn(`[OUI] ${mac} fetch error:`, e.message || e);
       return 'Desconocido';
     }
   },
