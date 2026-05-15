@@ -24,7 +24,7 @@ async function loadSummary() {
     const [statusData, credData] = await Promise.all([api.attackStatus(), api.credentials()]);
     const cnt = statusData.contadores || {};
     const creds = credData.credenciales || [];
-    const startMs = state.get('startTimeMs');
+    const startMs = state.get('startTimeMs') ?? Number(localStorage.getItem('warden.startTimeMs') ?? 0) || null;
     const durationSeg = startMs ? Math.round((Date.now() - startMs) / 1000) : 0;
 
     document.getElementById('summary-content').innerHTML = `
@@ -44,6 +44,7 @@ async function loadSummary() {
 
 function newSession() {
   state.reset();
+  localStorage.removeItem('warden.startTimeMs');
   showView('recon');
 }
 

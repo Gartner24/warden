@@ -21,7 +21,21 @@ function renderEthics() {
         <p class="text-sm text-gray-400">Canal ${net.canal} &bull; ${net.cifrado}</p>
         ${state.get('selectedVictim')
           ? `<p class="text-sm text-green-400 mt-2">Victima: <span class="font-mono">${state.get('selectedVictim')}</span></p>`
-          : `<p class="text-sm text-yellow-400 mt-2">Sin victima seleccionada — vuelva a Reconocimiento y haga clic en un cliente.</p>`
+          : `<div class="mt-2">
+    <p class="text-sm text-yellow-400 mb-2">Sin victima seleccionada — elija un cliente en Reconocimiento o ingrese el MAC manualmente:</p>
+    <div class="flex gap-2">
+      <input id="manual-victim-input" type="text"
+        placeholder="AA:BB:CC:DD:EE:FF"
+        pattern="^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+        class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-white"
+        oninput="validateManualVictim()" />
+      <button id="btn-set-victim" onclick="setManualVictim()" disabled
+        class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+        Usar este MAC
+      </button>
+    </div>
+    <p id="manual-victim-error" class="text-xs text-red-400 mt-1 hidden">MAC invalido. Formato: AA:BB:CC:DD:EE:FF</p>
+  </div>`
         }
       </div>
       <div class="mb-4">
@@ -39,6 +53,27 @@ function renderEthics() {
         Lanzar Ataque
       </button>
     </div>`;
+}
+
+const _MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
+
+function validateManualVictim() {
+  const input = document.getElementById('manual-victim-input');
+  const btn = document.getElementById('btn-set-victim');
+  const err = document.getElementById('manual-victim-error');
+  if (!input || !btn) return;
+  const valid = _MAC_RE.test(input.value.trim());
+  btn.disabled = !valid;
+  if (err) err.classList.toggle('hidden', valid || input.value === '');
+}
+
+function setManualVictim() {
+  const input = document.getElementById('manual-victim-input');
+  if (!input) return;
+  const mac = input.value.trim().toUpperCase();
+  if (!_MAC_RE.test(mac)) return;
+  state.set('selectedVictim', mac);
+  renderEthics();
 }
 
 function checkConfirm() {
@@ -77,7 +112,9 @@ async function launchAttack() {
       btn.textContent = 'Lanzar Ataque';
       return;
     }
-    state.set('startTimeMs', Date.now());
+    const nowMs = Date.now();
+    state.set('startTimeMs', nowMs);
+    localStorage.setItem('warden.startTimeMs', String(nowMs));
     showView('attack');
   } catch(e) {
     errEl.textContent = 'No se pudo contactar el ESP32 (192.168.4.1). Verifique que esta conectado a WARDEN_CONTROL.';
