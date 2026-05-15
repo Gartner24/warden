@@ -36,7 +36,7 @@ const api = {
     const prefix = mac.substring(0, 8).toUpperCase();
     if (cache[prefix] !== undefined) return cache[prefix];
     try {
-      const r = await fetch(`https://api.macvendors.com/${encodeURIComponent(mac)}`);
+      const r = await fetch(`https://api.macvendors.com/${mac}`);
       const vendor = r.ok ? (await r.text()).trim() || 'Desconocido' : 'Desconocido';
       cache[prefix] = vendor;
       state.set('ouiCache', cache);
