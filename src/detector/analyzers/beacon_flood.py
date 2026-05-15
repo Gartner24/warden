@@ -1,4 +1,4 @@
-"""D-01: anomalous unique-beacons-per-second detector with sliding window."""
+"""D-01: beacon flood detector — total beacon rate exceeds threshold within sliding window."""
 from __future__ import annotations
 
 from collections import deque

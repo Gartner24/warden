@@ -63,10 +63,12 @@ def test_chain_can_fire_again_after_reset():
     cc.consume(_alert("EVIL_TWIN", base + timedelta(seconds=20)))
     assert len(cc.drain()) == 1
     cc.reset()
-    base2 = base + timedelta(seconds=120)
+    # base2 is only 25s after chain fired — within the 60s refractory window.
+    # Without reset() this would be suppressed. Only reset() makes it work.
+    base2 = base + timedelta(seconds=25)
     cc.consume(_alert("BEACON_FLOOD", base2))
-    cc.consume(_alert("DEAUTH", base2 + timedelta(seconds=10)))
-    cc.consume(_alert("EVIL_TWIN", base2 + timedelta(seconds=20)))
+    cc.consume(_alert("DEAUTH", base2 + timedelta(seconds=5)))
+    cc.consume(_alert("EVIL_TWIN", base2 + timedelta(seconds=10)))
     assert len(cc.drain()) == 1
 
 

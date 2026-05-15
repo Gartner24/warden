@@ -66,14 +66,14 @@ def test_above_threshold_emits_alert():
 
 
 def test_deauth_from_ap_to_client_accepted():
-    """Deauth where AP is addr2 (AP -> client direction) must count."""
+    """Deauth where AP is addr2 but addr3 differs must still count (addr2 path)."""
     a = DeauthAnalyzer(_cfg(threshold=5, window=3))
     base = datetime(2026, 1, 1, 12, 0, 0)
     for i in range(30):
         pkt = Dot11(
             addr1=f"cc:cc:cc:cc:cc:{i % 16:02x}",
             addr2=PROTECTED_BSSID_STR,
-            addr3=PROTECTED_BSSID_STR,
+            addr3="ff:ff:ff:ff:ff:ff",  # NOT the protected BSSID — forces addr2 path
         ) / Dot11Deauth(reason=7)
         a.observe(pkt, base + timedelta(seconds=i * 0.1))
     alerts = a.drain()

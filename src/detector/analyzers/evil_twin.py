@@ -41,16 +41,16 @@ class EvilTwinAnalyzer:
             return
         if bssid == self._bssid_protegido or bssid in self._whitelist:
             return
-        if (ssid, bssid) in self._emitted:
+        if (_norm_ssid(ssid), bssid) in self._emitted:
             return
-        self._emitted.add((ssid, bssid))
+        self._emitted.add((_norm_ssid(ssid), bssid))
         self._pending.append({
             "timestamp": ts.isoformat(),
             "severidad": "CRITICAL",
             "tipo": "EVIL_TWIN",
-            "mensaje": f"Posible Evil Twin para SSID '{ssid}'",
+            "mensaje": f"Posible Evil Twin para SSID '{_norm_ssid(ssid)}'",
             "detalles": {
-                "ssid": ssid,
+                "ssid": _norm_ssid(ssid),
                 "bssid_legitimo": self._bssid_protegido.hex(":"),
                 "bssid_clon": bssid.hex(":"),
             },

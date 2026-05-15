@@ -45,7 +45,7 @@ def test_rogue_bssid_emits_critical_alert():
     alert = alerts[0]
     assert alert["tipo"] == "EVIL_TWIN"
     assert alert["severidad"] == "CRITICAL"
-    assert alert["detalles"]["ssid"] == SSID
+    assert alert["detalles"]["ssid"] == SSID.casefold()
     assert alert["detalles"]["bssid_legitimo"] == PROTECTED_BSSID_STR
     assert alert["detalles"]["bssid_clon"] == ROGUE_BSSID_STR
 
