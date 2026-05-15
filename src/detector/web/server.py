@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from detector.web.detector_runner import DetectorRunner
-from detector.web.routes import router, _iface_mode
+from detector.web.routes import router, _iface_mode, _ensure_mon0
 from detector.web.scan_capture import ScanCapture
 from detector.web.seen_networks import SeenNetworks
 from detector.web.websocket_manager import WebSocketManager
@@ -24,8 +24,9 @@ _STATIC = Path(__file__).parent / "static"
 async def _autostart_scanner(app: FastAPI) -> None:
     await asyncio.sleep(2)
     if _iface_mode() == "monitor":
+        capture_iface = await _ensure_mon0()
         seen = SeenNetworks()
-        scanner = ScanCapture(iface="panda0", on_packet=seen.observe)
+        scanner = ScanCapture(iface=capture_iface, on_packet=seen.observe)
         scanner.start()
         app.state.seen_networks = seen
         app.state.scanner = scanner

@@ -105,7 +105,7 @@ async def detector_start(request: Request) -> JSONResponse:
     runner = _runner(request)
     bssid = body.get("bssid_protegido", "")
     ssid = body.get("ssid_protegido", "")
-    iface = body.get("iface", "panda0")
+    iface = body.get("iface") or _get_capture_iface()
     pcap = body.get("pcap")
     canal = body.get("canal", 6)
     try:
@@ -182,22 +182,79 @@ def _iface_mode(iface: str = "panda0") -> str:
     return "unknown"
 
 
+def _get_phy(iface: str = "panda0") -> str | None:
+    """Return phy name for iface (e.g. 'phy9')."""
+    try:
+        result = subprocess.run(
+            ["iw", "dev", iface, "info"],
+            capture_output=True, text=True, timeout=3,
+        )
+        for line in result.stdout.splitlines():
+            s = line.strip()
+            if s.startswith("wiphy "):
+                return f"phy{s.split()[1]}"
+    except Exception:
+        pass
+    return None
+
+
+def _get_capture_iface() -> str:
+    """Return the interface that actually delivers frames in monitor mode.
+
+    On mt76x0u (Panda PAU0B) the converted panda0 passes zero frames to
+    userspace; a virtual mon0 interface added on the same phy works fine.
+    Prefer mon0 when it exists in monitor mode, fall back to panda0.
+    """
+    if _iface_mode("mon0") == "monitor":
+        return "mon0"
+    return "panda0"
+
+
+async def _ensure_mon0() -> str:
+    """Create mon0 virtual monitor interface on panda0's phy if not present.
+
+    Returns the interface name to use for capture ('mon0' on success, 'panda0'
+    as fallback if creation fails).
+    """
+    if _iface_mode("mon0") == "monitor":
+        return "mon0"
+    phy = _get_phy("panda0")
+    if phy is None:
+        return "panda0"
+    # Delete stale mon0 if present
+    await asyncio.create_subprocess_exec(
+        "sudo", "-n", "iw", "dev", "mon0", "del",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+    )
+    proc = await asyncio.create_subprocess_exec(
+        "sudo", "-n", "iw", "phy", phy, "interface", "add", "mon0", "type", "monitor",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await asyncio.wait_for(proc.communicate(), timeout=5)
+    if proc.returncode != 0:
+        return "panda0"
+    proc2 = await asyncio.create_subprocess_exec(
+        "sudo", "-n", "ip", "link", "set", "mon0", "up",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await asyncio.wait_for(proc2.communicate(), timeout=5)
+    if _iface_mode("mon0") == "monitor":
+        return "mon0"
+    return "panda0"
+
+
 @router.post("/api/scanner/start")
 async def scanner_start(request: Request) -> JSONResponse:
-    """Start passive network scanner on panda0 if it is in monitor mode.
-
-    Lets users who set monitor mode externally (without the web UI button) get
-    the BSSID dropdown working without needing sudo access for the mode-switch
-    script.
-    """
+    """Start passive network scanner when panda0 is already in monitor mode."""
     mode = _iface_mode()
     if mode != "monitor":
         return JSONResponse(
             {"ok": False, "error": f"Interface is in '{mode}' mode, not monitor. Switch to monitor first."},
             status_code=400,
         )
-    _start_scanner(request)
-    return JSONResponse({"ok": True, "mode": "monitor", "scanner": "started"})
+    capture_iface = await _ensure_mon0()
+    _start_scanner(request, iface=capture_iface)
+    return JSONResponse({"ok": True, "mode": "monitor", "capture_iface": capture_iface})
 
 
 @router.post("/api/interface/monitor")
@@ -223,20 +280,17 @@ async def interface_monitor(request: Request) -> JSONResponse:
     except asyncio.TimeoutError:
         script_error = "Script timeout — check /etc/sudoers.d/warden"
 
-    # If the script failed, check whether the interface is already in monitor mode
-    # (user may have set it up externally).  If so, still start the scanner.
     if not script_ok:
-        if _iface_mode() == "monitor":
-            _start_scanner(request)
-            return JSONResponse({
-                "ok": True,
-                "mode": "monitor",
-                "note": f"Monitor mode already active (script skipped: {script_error})",
-            })
-        return JSONResponse({"ok": False, "error": script_error}, status_code=500)
+        if _iface_mode() != "monitor":
+            return JSONResponse({"ok": False, "error": script_error}, status_code=500)
 
-    _start_scanner(request)
-    return JSONResponse({"ok": True, "mode": "monitor"})
+    capture_iface = await _ensure_mon0()
+    _start_scanner(request, iface=capture_iface)
+    note = None if script_ok else f"Monitor mode already active (script skipped: {script_error})"
+    resp: dict = {"ok": True, "mode": "monitor", "capture_iface": capture_iface}
+    if note:
+        resp["note"] = note
+    return JSONResponse(resp)
 
 
 @router.post("/api/interface/managed")
@@ -244,6 +298,7 @@ async def interface_managed(request: Request) -> JSONResponse:
     try:
         proc = await asyncio.create_subprocess_exec(
             "sudo", "-n", "bash", "-c",
+            "iw dev mon0 del 2>/dev/null; "
             "ip link set panda0 down && iw dev panda0 set type managed && ip link set panda0 up",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
