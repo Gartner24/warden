@@ -15,23 +15,27 @@ class ChainCorrelator:
     def __init__(self, config: DetectorConfig) -> None:
         self._window = timedelta(seconds=config.ventana_correlacion_seg)
         self._timestamps: dict[str, datetime] = {}
-        self._emitted = False
+        self._last_emitted_ts: datetime | None = None
         self._pending: list[dict[str, Any]] = []
 
     def consume(self, alert: dict[str, Any]) -> None:
-        if self._emitted:
-            return
         tipo = alert.get("tipo", "")
         if tipo not in _SEQUENCE:
             return
         ts = datetime.fromisoformat(alert["timestamp"])
+        if self._last_emitted_ts is not None:
+            if (ts - self._last_emitted_ts) < self._window:
+                return
+            self._timestamps.clear()
+            self._last_emitted_ts = None
         self._timestamps[tipo] = ts
         if all(t in self._timestamps for t in _SEQUENCE):
             t0 = self._timestamps["BEACON_FLOOD"]
             t1 = self._timestamps["DEAUTH"]
             t2 = self._timestamps["EVIL_TWIN"]
             if t0 < t1 < t2 and (t2 - t0) <= self._window:
-                self._emitted = True
+                self._last_emitted_ts = t2
+                self._timestamps.clear()
                 self._pending.append({
                     "timestamp": t2.isoformat(),
                     "severidad": "CRITICAL",
@@ -47,6 +51,11 @@ class ChainCorrelator:
                         "duracion_seg": (t2 - t0).total_seconds(),
                     },
                 })
+
+    def reset(self) -> None:
+        self._timestamps.clear()
+        self._last_emitted_ts = None
+        self._pending.clear()
 
     def drain(self) -> list[dict[str, Any]]:
         out, self._pending = self._pending, []

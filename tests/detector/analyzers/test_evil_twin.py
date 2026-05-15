@@ -61,3 +61,24 @@ def test_dedup_same_rogue_bssid():
     a.observe(_beacon(ROGUE_BSSID_STR, SSID), TS)
     a.observe(_beacon(ROGUE_BSSID_STR, SSID), TS)
     assert len(a.drain()) == 1
+
+
+def test_ssid_trailing_space_still_matches():
+    a = EvilTwinAnalyzer(_cfg())
+    a.observe(_beacon(ROGUE_BSSID_STR, SSID + " "), TS)
+    assert len(a.drain()) == 1
+
+
+def test_ssid_different_case_still_matches():
+    a = EvilTwinAnalyzer(_cfg())
+    a.observe(_beacon(ROGUE_BSSID_STR, SSID.lower()), TS)
+    assert len(a.drain()) == 1
+
+
+def test_reset_allows_re_detection():
+    a = EvilTwinAnalyzer(_cfg())
+    a.observe(_beacon(ROGUE_BSSID_STR, SSID), TS)
+    a.drain()
+    a.reset()
+    a.observe(_beacon(ROGUE_BSSID_STR, SSID), TS)
+    assert len(a.drain()) == 1

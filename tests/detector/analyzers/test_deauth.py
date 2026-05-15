@@ -65,6 +65,31 @@ def test_above_threshold_emits_alert():
     assert alert["detalles"]["tasa_por_seg"] >= 5
 
 
+def test_deauth_from_ap_to_client_accepted():
+    """Deauth where AP is addr2 (AP -> client direction) must count."""
+    a = DeauthAnalyzer(_cfg(threshold=5, window=3))
+    base = datetime(2026, 1, 1, 12, 0, 0)
+    for i in range(30):
+        pkt = Dot11(
+            addr1=f"cc:cc:cc:cc:cc:{i % 16:02x}",
+            addr2=PROTECTED_BSSID_STR,
+            addr3=PROTECTED_BSSID_STR,
+        ) / Dot11Deauth(reason=7)
+        a.observe(pkt, base + timedelta(seconds=i * 0.1))
+    alerts = a.drain()
+    assert len(alerts) == 1
+
+
+def test_diag_snapshot_tracks_drops():
+    a = DeauthAnalyzer(_cfg(threshold=5, window=3))
+    base = datetime(2026, 1, 1, 12, 0, 0)
+    for i in range(5):
+        a.observe(_deauth_other_bssid(i), base + timedelta(seconds=i * 0.1))
+    snap = a.diag_snapshot()
+    assert snap["observed_total"] == 5
+    assert snap["dropped_wrong_bssid"] == 5
+
+
 def test_cooldown_suppresses_repeat():
     a = DeauthAnalyzer(_cfg(threshold=5, window=3))
     base = datetime(2026, 1, 1, 12, 0, 0)

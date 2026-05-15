@@ -29,10 +29,11 @@ class BeaconFloodAnalyzer:
         while self._buf and self._buf[0][0] < cutoff:
             self._buf.popleft()
         self._buf.append((ts, bssid))
-        unique = len({b for _, b in self._buf})
-        rate = unique / self._window.total_seconds()
+        total = len(self._buf)
+        rate = total / self._window.total_seconds()
         if rate < self._threshold:
             return
+        unique = len({b for _, b in self._buf})
         # Suppress if within window+cooldown of last alert: the window covers
         # the period during which the original flood is "live", and cooldown
         # adds extra dead-time after that window expires.

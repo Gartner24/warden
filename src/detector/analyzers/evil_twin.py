@@ -9,9 +9,14 @@ from detector.config import DetectorConfig
 __all__ = ["EvilTwinAnalyzer"]
 
 
+def _norm_ssid(s: str) -> str:
+    return s.strip().casefold() if s else ""
+
+
 class EvilTwinAnalyzer:
     def __init__(self, config: DetectorConfig) -> None:
         self._ssid_protegido = config.ssid_protegido
+        self._ssid_norm = _norm_ssid(config.ssid_protegido)
         self._bssid_protegido = config.bssid_protegido
         self._whitelist = set(config.bssid_lista_blanca)
         self._emitted: set[tuple[str, bytes]] = set()
@@ -32,7 +37,7 @@ class EvilTwinAnalyzer:
             elt = elt.payload.getlayer(Dot11Elt)
         if ssid is None:
             return
-        if ssid != self._ssid_protegido:
+        if _norm_ssid(ssid) != self._ssid_norm:
             return
         if bssid == self._bssid_protegido or bssid in self._whitelist:
             return
@@ -50,6 +55,10 @@ class EvilTwinAnalyzer:
                 "bssid_clon": bssid.hex(":"),
             },
         })
+
+    def reset(self) -> None:
+        self._emitted.clear()
+        self._pending.clear()
 
     def drain(self) -> list[dict[str, Any]]:
         out, self._pending = self._pending, []

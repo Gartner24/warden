@@ -19,12 +19,17 @@ class DeauthAnalyzer:
         self._buf: deque[tuple[datetime, str, str]] = deque()  # (ts, src, dst)
         self._pending: list[dict[str, Any]] = []
         self._last_alert: datetime | None = None
+        self._observed_total = 0
+        self._dropped_wrong_bssid = 0
 
     def observe(self, pkt: object, ts: datetime) -> None:
         from scapy.layers.dot11 import Dot11
         dot11 = pkt[Dot11]  # type: ignore[index]
+        self._observed_total += 1
+        addr2 = dot11.addr2
         addr3 = dot11.addr3
-        if addr3 != self._bssid_protegido:
+        if addr3 != self._bssid_protegido and addr2 != self._bssid_protegido:
+            self._dropped_wrong_bssid += 1
             return
         src = dot11.addr2 or ""
         dst = dot11.addr1 or ""
@@ -53,6 +58,13 @@ class DeauthAnalyzer:
                     },
                 })
                 self._last_alert = ts
+
+    def diag_snapshot(self) -> dict[str, Any]:
+        return {
+            "observed_total": self._observed_total,
+            "dropped_wrong_bssid": self._dropped_wrong_bssid,
+            "pending_count": len(self._pending),
+        }
 
     def drain(self) -> list[dict[str, Any]]:
         out, self._pending = self._pending, []

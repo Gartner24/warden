@@ -39,6 +39,18 @@ def test_above_threshold_emits_alert():
     assert alerts[0]["detalles"]["tasa_beacons_por_seg"] >= 30
 
 
+def test_single_bssid_flood_triggers_alert():
+    """200 frames from one BSSID in 5s = 40/s > 30/s threshold -- must alert."""
+    a = BeaconFloodAnalyzer(_cfg(threshold=30, window=5))
+    base = datetime(2026, 1, 1, 12, 0, 0)
+    single_bssid_beacon = _beacon(0)  # always same BSSID
+    for i in range(200):
+        a.observe(single_bssid_beacon, base + timedelta(seconds=i / 40))
+    alerts = a.drain()
+    assert len(alerts) >= 1
+    assert alerts[0]["tipo"] == "BEACON_FLOOD"
+
+
 def test_cooldown_suppresses_repeat():
     a = BeaconFloodAnalyzer(_cfg(threshold=10, window=5))
     base = datetime(2026, 1, 1, 12, 0, 0)
