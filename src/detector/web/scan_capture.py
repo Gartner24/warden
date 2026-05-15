@@ -1,4 +1,9 @@
-"""Passive scanner capture using scapy sniff for network discovery."""
+"""Passive scanner capture for network discovery.
+
+Tries scapy.sniff() first (works when process has CAP_NET_RAW / runs as root).
+Falls back to sudo -n tcpdump piped through PcapReader when scapy lacks
+raw-socket permission — requires /etc/sudoers.d/warden to allow tcpdump.
+"""
 from __future__ import annotations
 
 import subprocess
@@ -8,6 +13,7 @@ import time
 from typing import Callable
 
 from scapy.all import sniff  # type: ignore[import-untyped]
+from scapy.utils import PcapReader  # type: ignore[import-untyped]
 
 __all__ = ["ScanCapture"]
 
@@ -21,6 +27,7 @@ class ScanCapture:
         self._thread: threading.Thread | None = None
         self._hop_thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._proc: subprocess.Popen | None = None
         self.last_error: str | None = None
         self.hop_error: str | None = None
         self.packets_seen: int = 0
@@ -41,6 +48,8 @@ class ScanCapture:
 
     def stop(self) -> None:
         self._stop.set()
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
         if self._thread:
             self._thread.join(timeout=2)
         if self._hop_thread:
@@ -69,9 +78,46 @@ class ScanCapture:
                 store=False,
                 stop_filter=lambda _p: self._stop.is_set(),
             )
+            return  # clean stop via stop_filter
+        except PermissionError as exc:
+            print(f"[ScanCapture] scapy needs privileges ({exc}), trying sudo tcpdump", file=sys.stderr)
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
+            print(f"[ScanCapture] scapy failed: {self.last_error}", file=sys.stderr)
+            return
+
+        # Fallback: sudo tcpdump -> PcapReader
+        self._run_tcpdump()
+
+    def _run_tcpdump(self) -> None:
+        try:
+            self._proc = subprocess.Popen(
+                ["sudo", "-n", "tcpdump", "-i", self.iface, "-U", "-w", "-"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            # Give tcpdump a moment to start, then check if it died immediately
+            time.sleep(0.3)
+            if self._proc.poll() is not None:
+                err = (self._proc.stderr.read() or b"").decode(errors="replace").strip()
+                self.last_error = f"tcpdump exited early: {err[:200]}"
+                print(f"[ScanCapture] {self.last_error}", file=sys.stderr)
+                return
+            with PcapReader(self._proc.stdout) as reader:
+                for pkt in reader:
+                    if self._stop.is_set():
+                        break
+                    self._wrap_packet(pkt)
+        except Exception as exc:
+            self.last_error = f"tcpdump fallback failed: {type(exc).__name__}: {exc}"
             print(f"[ScanCapture] {self.last_error}", file=sys.stderr)
+        finally:
+            if self._proc and self._proc.poll() is None:
+                self._proc.terminate()
+                try:
+                    self._proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
 
     def _hop_loop(self) -> None:
         i = 0
