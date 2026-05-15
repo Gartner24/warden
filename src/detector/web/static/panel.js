@@ -3,6 +3,57 @@ const counters = { BEACON_FLOOD: 0, DEAUTH: 0, EVIL_TWIN: 0, CADENA_OFENSIVA: 0 
 let totalAlerts = 0;
 let ws = null;
 let _detectorRunning = false;
+let _networkPollInterval = null;
+
+function toggleAdvanced() {
+  const el = document.getElementById('advanced-inputs');
+  el.classList.toggle('hidden');
+}
+
+async function refreshNetworks() {
+  try {
+    const resp = await fetch('/api/networks');
+    const data = await resp.json();
+    populateNetworkSelect(data.networks || []);
+  } catch(e) {
+    document.getElementById('network-scan-status').textContent = 'Error al obtener redes.';
+  }
+}
+
+function populateNetworkSelect(networks) {
+  const sel = document.getElementById('input-network');
+  const current = sel.value;
+  sel.innerHTML = networks.length
+    ? '<option value="">-- Seleccione una red --</option>'
+    : '<option value="">-- Sin redes detectadas aun --</option>';
+  networks.forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n.bssid;
+    opt.dataset.ssid = n.ssid || '';
+    opt.dataset.channel = n.channel || '';
+    opt.textContent = `${n.ssid || '(oculta)'} (${n.bssid}) — ch${n.channel || '?'}, ${n.rssi != null ? n.rssi + ' dBm' : '?'}`;
+    sel.appendChild(opt);
+  });
+  // Restore selection if still available
+  if (current && [...sel.options].some(o => o.value === current)) {
+    sel.value = current;
+  }
+  const status = document.getElementById('network-scan-status');
+  status.textContent = networks.length ? `${networks.length} redes detectadas` : '';
+}
+
+function startNetworkPolling() {
+  stopNetworkPolling();
+  refreshNetworks(); // immediate first fetch
+  _networkPollInterval = setInterval(refreshNetworks, 2000);
+}
+
+function stopNetworkPolling() {
+  if (_networkPollInterval) {
+    clearInterval(_networkPollInterval);
+    _networkPollInterval = null;
+  }
+}
 
 function setThreatState(level) {
   const el = document.getElementById('threat-state');
@@ -95,6 +146,13 @@ function connectWS() {
 }
 
 async function startDetector() {
+  // If dropdown has a selection, use it to fill manual inputs
+  const sel = document.getElementById('input-network');
+  if (sel && sel.value) {
+    const selectedOpt = sel.options[sel.selectedIndex];
+    document.getElementById('input-bssid').value = sel.value;
+    document.getElementById('input-ssid').value = selectedOpt.dataset.ssid || '';
+  }
   const bssid = document.getElementById('input-bssid').value.trim();
   const ssid = document.getElementById('input-ssid').value.trim();
   const errEl = document.getElementById('detector-error');
@@ -173,6 +231,8 @@ async function setMonitorMode() {
   if (!data.ok) {
     errEl.textContent = 'Error: ' + (data.error || JSON.stringify(data));
     errEl.classList.remove('hidden');
+  } else {
+    startNetworkPolling();
   }
   await refreshIfaceStatus();
 }
@@ -185,6 +245,9 @@ async function setManagedMode() {
   if (!data.ok) {
     errEl.textContent = 'Error: ' + (data.error || JSON.stringify(data));
     errEl.classList.remove('hidden');
+  } else {
+    stopNetworkPolling();
+    populateNetworkSelect([]);
   }
   await refreshIfaceStatus();
 }

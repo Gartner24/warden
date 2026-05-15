@@ -49,18 +49,36 @@
     <!-- Detector Config + Controls -->
     <div class="bg-gray-800 rounded-xl p-4 mb-6">
       <h2 class="font-semibold text-gray-200 mb-3">Configuracion del detector</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+      <div class="mb-4">
+        <label class="block text-xs text-gray-400 mb-1">Red a proteger</label>
+        <div class="flex gap-2">
+          <select id="input-network"
+            class="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white">
+            <option value="">-- Active modo monitor para escanear redes --</option>
+          </select>
+          <button onclick="refreshNetworks()" title="Refrescar lista"
+            class="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm">
+            Refrescar
+          </button>
+        </div>
+        <p id="network-scan-status" class="text-xs text-gray-500 mt-1"></p>
+      </div>
+      <!-- Advanced / manual fallback (hidden by default) -->
+      <div id="advanced-inputs" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <div>
-          <label class="block text-xs text-gray-400 mb-1">BSSID protegido (red a vigilar)</label>
+          <label class="block text-xs text-gray-400 mb-1">BSSID protegido (manual)</label>
           <input id="input-bssid" type="text" placeholder="E4:AB:89:D6:9B:80"
             class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-white" />
         </div>
         <div>
-          <label class="block text-xs text-gray-400 mb-1">SSID protegido</label>
+          <label class="block text-xs text-gray-400 mb-1">SSID protegido (manual)</label>
           <input id="input-ssid" type="text" placeholder="RVGREDES 2.4"
             class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white" />
         </div>
       </div>
+      <button onclick="toggleAdvanced()" class="text-xs text-gray-500 hover:text-gray-300 mb-4">
+        Entrada manual (avanzado)
+      </button>
       <div id="detector-error" class="hidden mb-3 text-sm text-red-400"></div>
       <div id="detector-success" class="hidden mb-3 text-sm text-green-400"></div>
       <div class="flex gap-3 flex-wrap">
