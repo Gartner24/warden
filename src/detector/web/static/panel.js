@@ -177,6 +177,9 @@ async function startDetector() {
     const selectedOpt = sel.options[sel.selectedIndex];
     document.getElementById('input-bssid').value = sel.value;
     document.getElementById('input-ssid').value = selectedOpt.dataset.ssid || '';
+    if (selectedOpt.dataset.channel) {
+      document.getElementById('input-channel').value = selectedOpt.dataset.channel;
+    }
   }
   const bssid = document.getElementById('input-bssid').value.trim();
   const ssid = document.getElementById('input-ssid').value.trim();
